@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "harmony-mobile",
-    "slug": "harmony-mobile",
+    "name": "halmoni",
+    "slug": "halmoni-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "harmonymobile",
+    "scheme": "halmoni",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon"
@@ -34,11 +34,26 @@
             "imageWidth": 76
           }
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": true,
+      "baseUrl": "/demo"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "11439ff4-da49-4ea6-9944-5c1fbe48264d"
+      }
+    },
+    "owner": "hanchoister",
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/11439ff4-da49-4ea6-9944-5c1fbe48264d"
     }
   }
 }
