@@ -1,7 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Linking, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Linking, Pressable, RefreshControl, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -107,11 +107,23 @@ export default function FamilyScreen() {
       Alert.alert('Could not create invite', error.message);
       return;
     }
-    await Clipboard.setStringAsync(data as string);
-    Alert.alert(
-      'Invite code copied',
-      `Share this code: ${data}\n\nIt's been copied to your clipboard.`,
-    );
+    const code = data as string;
+    await Clipboard.setStringAsync(code);
+    const parentLabel = currentParent?.nickname?.trim() || currentParent?.name || 'our parent';
+    const inviterName = me?.name?.trim();
+    const opener = inviterName ? `${inviterName} set up Halmoni` : "I set up Halmoni";
+    const message =
+      `${opener} to help our family coordinate ${parentLabel}'s care.\n\n` +
+      `Join with code: ${code}\n\n` +
+      `Get the app: https://halmoni.uk`;
+    try {
+      const result = await Share.share({ message });
+      if (result.action === Share.dismissedAction) {
+        Alert.alert('Invite code copied', `Share this code: ${code}`);
+      }
+    } catch (e) {
+      Alert.alert('Invite code copied', `Share this code: ${code}`);
+    }
   }
 
   if (!currentParent) {

@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -7,12 +8,27 @@ import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Pill } from '@/components/ui/pill';
 import { Screen } from '@/components/ui/screen';
+import { shareCareKit } from '@/lib/care-kit';
 import { calcAge } from '@/lib/format';
 import { useParents } from '@/lib/parent';
 import { palette, radius, spacing } from '@/lib/theme';
 
 export default function ProfileScreen() {
   const { parents, currentParent, setCurrentParentId } = useParents();
+  const [exporting, setExporting] = useState(false);
+
+  async function onShareCareKit() {
+    if (!currentParent) return;
+    setExporting(true);
+    try {
+      await shareCareKit(currentParent);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Could not generate the Care Kit.';
+      Alert.alert('Care Kit failed', msg);
+    } finally {
+      setExporting(false);
+    }
+  }
 
   if (!currentParent) {
     return (
@@ -145,6 +161,11 @@ export default function ProfileScreen() {
         </Card>
       )}
 
+      <Button
+        title="🩺 Share Care Kit (PDF)"
+        onPress={onShareCareKit}
+        busy={exporting}
+      />
       <Button title="+ Add another parent" onPress={() => router.push('/parent/new')} variant="secondary" />
       <Button title="Account & sign out" onPress={() => router.push('/account')} variant="secondary" />
     </Screen>

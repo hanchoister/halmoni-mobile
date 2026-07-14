@@ -3,7 +3,8 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { daysBetween } from '@/lib/format';
+import { analyzeSymptoms, type Finding } from '@/lib/detective';
+import { daysBetween, formatDateShort } from '@/lib/format';
 import { palette, spacing } from '@/lib/theme';
 
 type Med = {
@@ -17,6 +18,7 @@ type Symptom = {
   id: string;
   description: string;
   observed_at: string;
+  possible_med_links?: string[] | null;
 };
 
 type Handoff = {
@@ -32,14 +34,7 @@ type Sibling = { id: string; name: string };
 
 type Item =
   | { key: string; kind: 'refill'; medName: string; daysLeft: number }
-  | {
-      key: string;
-      kind: 'detective';
-      medName: string;
-      count: number;
-      sampleDesc: string;
-      firstDaysAfter: number;
-    }
+  | { key: string; kind: 'finding'; finding: Finding }
   | {
       key: string;
       kind: 'handoff';
@@ -67,7 +62,6 @@ export function HeadsUp({
   const nowIso = new Date().toISOString();
   const items: Item[] = [];
 
-  // Pending hand-offs come first — they need immediate action from the caregiver.
   handoffs
     .filter((h) => h.to_member_id === meId && !h.accepted_at)
     .forEach((h) => {
@@ -82,7 +76,6 @@ export function HeadsUp({
       });
     });
 
-  // Refills within a week.
   meds.forEach((m) => {
     if (!m.refill_by) return;
     const days = daysBetween(nowIso, m.refill_by);
@@ -96,47 +89,19 @@ export function HeadsUp({
     }
   });
 
-  // Aggregate symptoms per med: one detective card per suspect med with a count,
-  // rather than one card per symptom (which drowned out other headlines).
-  const detectiveByMed = new Map<
-    string,
-    { medName: string; count: number; sampleDesc: string; firstDaysAfter: number }
-  >();
-  symptoms.forEach((s) => {
-    const link = meds.find((m) => {
-      if (!m.started_at) return false;
-      const d = daysBetween(m.started_at, s.observed_at);
-      return d >= 0 && d <= 14;
-    });
-    if (!link || !link.started_at) return;
-    const daysAfter = daysBetween(link.started_at, s.observed_at);
-    const existing = detectiveByMed.get(link.id);
-    if (existing) {
-      existing.count += 1;
-      if (daysAfter < existing.firstDaysAfter) {
-        existing.firstDaysAfter = daysAfter;
-      }
-    } else {
-      detectiveByMed.set(link.id, {
-        medName: link.name,
-        count: 1,
-        sampleDesc: s.description,
-        firstDaysAfter: daysAfter,
-      });
-    }
-  });
-  for (const [medId, det] of detectiveByMed) {
-    items.push({
-      key: `det-${medId}`,
-      kind: 'detective',
-      medName: det.medName,
-      count: det.count,
-      sampleDesc: det.sampleDesc,
-      firstDaysAfter: det.firstDaysAfter,
-    });
-  }
+  const findings = analyzeSymptoms(meds, symptoms);
+  const urgentFindings = findings.filter((f) => f.tier === 'urgent');
+  const highFindings = findings.filter((f) => f.tier === 'high');
+  const lowFindings = findings.filter((f) => f.tier === 'low');
 
-  if (items.length === 0) {
+  const rankedFindings = [...urgentFindings, ...highFindings];
+  rankedFindings.forEach((f) => {
+    items.push({ key: `find-${f.medId}`, kind: 'finding', finding: f });
+  });
+
+  const nothingUrgent = items.length === 0;
+
+  if (nothingUrgent && lowFindings.length === 0) {
     return (
       <Card>
         <Text style={styles.sectionLabel}>HEADS UP</Text>
@@ -150,6 +115,13 @@ export function HeadsUp({
   return (
     <View style={{ gap: spacing.md }}>
       <Text style={styles.groupLabel}>HEADS UP</Text>
+      {nothingUrgent && (
+        <Card>
+          <Text style={styles.quiet}>
+            All quiet — no urgent refills, side effects, or pending hand-offs.
+          </Text>
+        </Card>
+      )}
       {items.slice(0, 4).map((it) => {
         if (it.kind === 'refill') {
           return (
@@ -173,21 +145,35 @@ export function HeadsUp({
             </Card>
           );
         }
-        if (it.kind === 'detective') {
+        if (it.kind === 'finding') {
+          const f = it.finding;
+          const isUrgent = f.tier === 'urgent';
+          const emoji = isUrgent ? '🚨' : '📝';
+          const title = isUrgent
+            ? `Call the doctor today about ${f.medName}`
+            : `Mention at the next ${f.medName} visit`;
           return (
-            <Card key={it.key} tint="warm">
+            <Card
+              key={it.key}
+              tint="warm"
+              style={isUrgent ? { borderColor: palette.terracotta600, borderWidth: 2 } : undefined}>
               <View style={styles.row}>
-                <Text style={styles.emoji}>✨</Text>
+                <Text style={styles.emoji}>{emoji}</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.title}>
-                    Possible side effect — could {it.medName} be the cause?
-                  </Text>
-                  <Text style={styles.hint}>
-                    {it.count} symptom{it.count === 1 ? '' : 's'} logged since starting{' '}
-                    {it.medName} {it.firstDaysAfter} day
-                    {it.firstDaysAfter === 1 ? '' : 's'} ago — e.g. &ldquo;{it.sampleDesc}
-                    &rdquo;.
-                  </Text>
+                  <Text style={styles.title}>{title}</Text>
+                  {f.symptoms.slice(0, 3).map((s) => (
+                    <Text key={s.id} style={styles.hint}>
+                      · &ldquo;{s.description}&rdquo; ({formatDateShort(s.observedAt)}
+                      {s.daysAfter != null
+                        ? `, ${s.daysAfter} day${s.daysAfter === 1 ? '' : 's'} after starting`
+                        : ''}
+                      {s.matchedKeyword ? ` · matches known "${s.matchedKeyword}"` : ''}
+                      )
+                    </Text>
+                  ))}
+                  {f.symptoms.length > 3 && (
+                    <Text style={styles.hint}>· +{f.symptoms.length - 3} more</Text>
+                  )}
                 </View>
               </View>
             </Card>
@@ -218,6 +204,13 @@ export function HeadsUp({
           </Card>
         );
       })}
+      {lowFindings.length > 0 && (
+        <Pressable onPress={() => router.push('/patterns')} style={styles.patternsLink}>
+          <Text style={styles.patternsText}>
+            See {lowFindings.length} possible pattern{lowFindings.length === 1 ? '' : 's'} →
+          </Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -244,4 +237,6 @@ const styles = StyleSheet.create({
   hint: { fontSize: 12, color: palette.ink500, marginTop: 4, lineHeight: 16 },
   body: { fontSize: 13, color: palette.ink700, lineHeight: 18 },
   italic: { fontSize: 12, color: palette.sage700, fontStyle: 'italic' },
+  patternsLink: { paddingVertical: spacing.sm, paddingHorizontal: 4 },
+  patternsText: { fontSize: 13, color: palette.sage600, fontWeight: '600' },
 });

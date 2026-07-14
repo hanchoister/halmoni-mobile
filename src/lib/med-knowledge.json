@@ -1,0 +1,477 @@
+{
+  "$comment": "Curated common side effects and urgent red flags for geriatric medications. Sourced from FDA drug labels (DailyMed) and MedlinePlus. Keys are generic names; aliases hold brand names. Common = 'worth mentioning at next visit'. Urgent = 'call the doctor today'. Keep entries conservative; only add well-established side effects.",
+  "medications": {
+    "atorvastatin": {
+      "aliases": ["lipitor"],
+      "common": ["muscle pain", "muscle ache", "muscle weakness", "joint pain", "diarrhea", "constipation", "nausea", "headache"],
+      "urgent": ["dark urine", "severe muscle pain", "muscle breakdown", "yellow skin", "yellow eyes"]
+    },
+    "rosuvastatin": {
+      "aliases": ["crestor"],
+      "common": ["muscle pain", "muscle ache", "headache", "nausea", "constipation", "abdominal pain", "weakness"],
+      "urgent": ["dark urine", "severe muscle pain", "yellow skin", "yellow eyes"]
+    },
+    "simvastatin": {
+      "aliases": ["zocor"],
+      "common": ["muscle pain", "constipation", "nausea", "headache", "abdominal pain"],
+      "urgent": ["dark urine", "severe muscle pain", "yellow skin", "yellow eyes"]
+    },
+    "pravastatin": {
+      "aliases": ["pravachol"],
+      "common": ["muscle pain", "nausea", "diarrhea", "headache", "rash"],
+      "urgent": ["dark urine", "severe muscle pain", "yellow skin"]
+    },
+    "amlodipine": {
+      "aliases": ["norvasc"],
+      "common": ["swelling", "ankle swelling", "leg swelling", "flushing", "headache", "fatigue", "dizziness", "palpitations"],
+      "urgent": ["chest pain", "fainting", "very low blood pressure"]
+    },
+    "lisinopril": {
+      "aliases": ["prinivil", "zestril"],
+      "common": ["dry cough", "cough", "dizziness", "headache", "fatigue", "low blood pressure"],
+      "urgent": ["swelling of face", "swelling of tongue", "swelling of throat", "trouble breathing", "high potassium"]
+    },
+    "losartan": {
+      "aliases": ["cozaar"],
+      "common": ["dizziness", "fatigue", "cough", "back pain", "low blood pressure"],
+      "urgent": ["swelling of face", "swelling of throat", "high potassium", "trouble breathing"]
+    },
+    "metoprolol": {
+      "aliases": ["lopressor", "toprol"],
+      "common": ["fatigue", "dizziness", "cold hands", "cold feet", "slow heartbeat", "depression", "shortness of breath", "vivid dreams"],
+      "urgent": ["fainting", "very slow heartbeat", "wheezing", "trouble breathing"]
+    },
+    "carvedilol": {
+      "aliases": ["coreg"],
+      "common": ["fatigue", "dizziness", "low blood pressure", "weight gain", "shortness of breath", "slow heartbeat"],
+      "urgent": ["fainting", "very slow heartbeat", "wheezing"]
+    },
+    "atenolol": {
+      "aliases": ["tenormin"],
+      "common": ["fatigue", "dizziness", "cold hands", "slow heartbeat", "depression"],
+      "urgent": ["fainting", "very slow heartbeat", "trouble breathing"]
+    },
+    "hydrochlorothiazide": {
+      "aliases": ["hctz", "microzide"],
+      "common": ["dizziness", "low blood pressure", "increased urination", "muscle cramps", "weakness", "dry mouth"],
+      "urgent": ["fainting", "severe dehydration", "very low potassium", "very low sodium"]
+    },
+    "chlorthalidone": {
+      "aliases": [],
+      "common": ["dizziness", "increased urination", "muscle cramps", "weakness", "dry mouth"],
+      "urgent": ["fainting", "severe dehydration", "very low potassium"]
+    },
+    "furosemide": {
+      "aliases": ["lasix"],
+      "common": ["dizziness", "increased urination", "muscle cramps", "dry mouth", "thirst", "weakness", "hearing changes"],
+      "urgent": ["fainting", "severe dehydration", "hearing loss", "ringing in ears", "very low potassium"]
+    },
+    "spironolactone": {
+      "aliases": ["aldactone"],
+      "common": ["dizziness", "breast tenderness", "irregular periods", "nausea", "fatigue"],
+      "urgent": ["high potassium", "irregular heartbeat", "muscle weakness"]
+    },
+    "diltiazem": {
+      "aliases": ["cardizem", "tiazac"],
+      "common": ["swelling", "ankle swelling", "headache", "fatigue", "constipation", "dizziness"],
+      "urgent": ["fainting", "very slow heartbeat", "chest pain"]
+    },
+    "warfarin": {
+      "aliases": ["coumadin", "jantoven"],
+      "common": ["easy bruising", "small bruises", "bleeding gums", "nosebleeds"],
+      "urgent": ["bleeding", "blood in urine", "blood in stool", "black stool", "vomiting blood", "coughing up blood", "large bruise", "severe headache", "severe abdominal pain", "unusual bleeding"]
+    },
+    "apixaban": {
+      "aliases": ["eliquis"],
+      "common": ["easy bruising", "small bruises", "bleeding gums", "nosebleeds"],
+      "urgent": ["bleeding", "blood in urine", "blood in stool", "black stool", "vomiting blood", "coughing up blood", "large bruise", "severe headache"]
+    },
+    "rivaroxaban": {
+      "aliases": ["xarelto"],
+      "common": ["easy bruising", "bleeding gums", "back pain"],
+      "urgent": ["bleeding", "blood in urine", "blood in stool", "black stool", "vomiting blood", "coughing up blood", "large bruise", "severe headache"]
+    },
+    "clopidogrel": {
+      "aliases": ["plavix"],
+      "common": ["easy bruising", "bleeding gums", "nosebleeds", "diarrhea", "rash"],
+      "urgent": ["bleeding", "blood in urine", "blood in stool", "black stool", "vomiting blood", "severe headache", "confusion", "yellow skin"]
+    },
+    "aspirin": {
+      "aliases": [],
+      "common": ["stomach upset", "heartburn", "easy bruising"],
+      "urgent": ["blood in stool", "black stool", "vomiting blood", "ringing in ears", "severe stomach pain"]
+    },
+    "metformin": {
+      "aliases": ["glucophage"],
+      "common": ["diarrhea", "nausea", "abdominal pain", "gas", "metallic taste", "loss of appetite", "vomiting"],
+      "urgent": ["shortness of breath", "trouble breathing", "muscle pain", "severe weakness", "very slow heartbeat", "confusion"]
+    },
+    "glipizide": {
+      "aliases": ["glucotrol"],
+      "common": ["low blood sugar", "shakiness", "sweating", "hunger", "dizziness", "weight gain"],
+      "urgent": ["severe low blood sugar", "loss of consciousness", "seizure", "confusion"]
+    },
+    "glimepiride": {
+      "aliases": ["amaryl"],
+      "common": ["low blood sugar", "shakiness", "sweating", "hunger", "dizziness"],
+      "urgent": ["severe low blood sugar", "loss of consciousness", "seizure", "confusion"]
+    },
+    "sitagliptin": {
+      "aliases": ["januvia"],
+      "common": ["headache", "upper respiratory infection", "runny nose", "sore throat", "joint pain"],
+      "urgent": ["severe abdominal pain", "pancreatitis", "swelling of face", "trouble breathing"]
+    },
+    "empagliflozin": {
+      "aliases": ["jardiance"],
+      "common": ["urinary tract infection", "yeast infection", "increased urination", "thirst"],
+      "urgent": ["severe abdominal pain", "confusion", "trouble breathing", "genital pain", "severe genital infection"]
+    },
+    "semaglutide": {
+      "aliases": ["ozempic", "wegovy", "rybelsus"],
+      "common": ["nausea", "vomiting", "diarrhea", "constipation", "abdominal pain", "loss of appetite"],
+      "urgent": ["severe abdominal pain", "pancreatitis", "vision changes", "yellow skin"]
+    },
+    "insulin": {
+      "aliases": ["lantus", "humalog", "novolog", "levemir", "tresiba"],
+      "common": ["low blood sugar", "shakiness", "sweating", "hunger", "weight gain", "injection site reaction"],
+      "urgent": ["severe low blood sugar", "loss of consciousness", "seizure", "confusion"]
+    },
+    "levothyroxine": {
+      "aliases": ["synthroid", "levoxyl"],
+      "common": ["weight loss", "increased appetite", "hair loss", "insomnia", "sweating"],
+      "urgent": ["chest pain", "rapid heartbeat", "palpitations", "shortness of breath"]
+    },
+    "donepezil": {
+      "aliases": ["aricept"],
+      "common": ["nausea", "vomiting", "diarrhea", "loss of appetite", "weight loss", "muscle cramps", "insomnia", "vivid dreams", "dizziness", "fatigue"],
+      "urgent": ["fainting", "very slow heartbeat", "black stool", "vomiting blood", "seizure"]
+    },
+    "rivastigmine": {
+      "aliases": ["exelon"],
+      "common": ["nausea", "vomiting", "diarrhea", "loss of appetite", "weight loss", "dizziness", "confusion"],
+      "urgent": ["fainting", "very slow heartbeat", "seizure", "severe vomiting"]
+    },
+    "memantine": {
+      "aliases": ["namenda"],
+      "common": ["dizziness", "confusion", "headache", "constipation", "fatigue"],
+      "urgent": ["shortness of breath", "hallucinations", "severe confusion"]
+    },
+    "sertraline": {
+      "aliases": ["zoloft"],
+      "common": ["nausea", "diarrhea", "insomnia", "sleepiness", "dry mouth", "loss of appetite", "sexual dysfunction", "sweating", "tremor"],
+      "urgent": ["low sodium", "confusion", "seizure", "serotonin syndrome", "high fever", "muscle stiffness", "suicidal thoughts"]
+    },
+    "citalopram": {
+      "aliases": ["celexa"],
+      "common": ["nausea", "dry mouth", "insomnia", "sleepiness", "sweating", "loss of appetite", "sexual dysfunction"],
+      "urgent": ["rapid heartbeat", "irregular heartbeat", "fainting", "low sodium", "confusion", "seizure", "suicidal thoughts"]
+    },
+    "escitalopram": {
+      "aliases": ["lexapro"],
+      "common": ["nausea", "insomnia", "sleepiness", "dry mouth", "sweating", "sexual dysfunction"],
+      "urgent": ["low sodium", "confusion", "seizure", "serotonin syndrome", "suicidal thoughts"]
+    },
+    "mirtazapine": {
+      "aliases": ["remeron"],
+      "common": ["sleepiness", "increased appetite", "weight gain", "dry mouth", "constipation", "dizziness"],
+      "urgent": ["fever", "chills", "sore throat", "confusion", "suicidal thoughts", "severe rash"]
+    },
+    "trazodone": {
+      "aliases": ["desyrel"],
+      "common": ["sleepiness", "dizziness", "dry mouth", "headache", "blurred vision", "constipation"],
+      "urgent": ["fainting", "irregular heartbeat", "priapism", "severe confusion", "serotonin syndrome"]
+    },
+    "duloxetine": {
+      "aliases": ["cymbalta"],
+      "common": ["nausea", "dry mouth", "constipation", "sleepiness", "insomnia", "sweating", "loss of appetite"],
+      "urgent": ["yellow skin", "severe abdominal pain", "high blood pressure", "serotonin syndrome", "suicidal thoughts"]
+    },
+    "bupropion": {
+      "aliases": ["wellbutrin"],
+      "common": ["dry mouth", "insomnia", "headache", "nausea", "weight loss", "constipation", "sweating"],
+      "urgent": ["seizure", "high blood pressure", "confusion", "hallucinations", "suicidal thoughts"]
+    },
+    "quetiapine": {
+      "aliases": ["seroquel"],
+      "common": ["sleepiness", "dizziness", "dry mouth", "constipation", "weight gain", "increased appetite"],
+      "urgent": ["fainting", "very high fever", "muscle stiffness", "confusion", "irregular heartbeat", "uncontrollable movements"]
+    },
+    "risperidone": {
+      "aliases": ["risperdal"],
+      "common": ["sleepiness", "dizziness", "weight gain", "increased appetite", "tremor", "drooling"],
+      "urgent": ["fainting", "very high fever", "muscle stiffness", "uncontrollable movements", "confusion", "stroke symptoms"]
+    },
+    "olanzapine": {
+      "aliases": ["zyprexa"],
+      "common": ["sleepiness", "weight gain", "increased appetite", "dry mouth", "dizziness", "tremor"],
+      "urgent": ["fainting", "very high fever", "muscle stiffness", "confusion", "very high blood sugar"]
+    },
+    "lorazepam": {
+      "aliases": ["ativan"],
+      "common": ["sleepiness", "dizziness", "weakness", "unsteadiness", "confusion", "memory problems"],
+      "urgent": ["shallow breathing", "fainting", "severe confusion", "fall"]
+    },
+    "alprazolam": {
+      "aliases": ["xanax"],
+      "common": ["sleepiness", "dizziness", "unsteadiness", "confusion", "memory problems", "dry mouth"],
+      "urgent": ["shallow breathing", "fainting", "severe confusion", "fall"]
+    },
+    "clonazepam": {
+      "aliases": ["klonopin"],
+      "common": ["sleepiness", "dizziness", "unsteadiness", "confusion", "memory problems"],
+      "urgent": ["shallow breathing", "severe confusion", "fall", "suicidal thoughts"]
+    },
+    "zolpidem": {
+      "aliases": ["ambien"],
+      "common": ["sleepiness", "dizziness", "headache", "next-day drowsiness", "unsteadiness"],
+      "urgent": ["sleep walking", "sleep driving", "severe confusion", "hallucinations", "fall"]
+    },
+    "ibuprofen": {
+      "aliases": ["advil", "motrin"],
+      "common": ["stomach upset", "heartburn", "nausea", "swelling"],
+      "urgent": ["blood in stool", "black stool", "vomiting blood", "severe stomach pain", "chest pain", "swelling of face"]
+    },
+    "naproxen": {
+      "aliases": ["aleve"],
+      "common": ["stomach upset", "heartburn", "nausea", "swelling", "headache"],
+      "urgent": ["blood in stool", "black stool", "vomiting blood", "severe stomach pain", "chest pain"]
+    },
+    "acetaminophen": {
+      "aliases": ["tylenol"],
+      "common": ["nausea"],
+      "urgent": ["yellow skin", "yellow eyes", "dark urine", "severe abdominal pain", "rash", "swelling of face"]
+    },
+    "tramadol": {
+      "aliases": ["ultram"],
+      "common": ["nausea", "constipation", "dizziness", "sleepiness", "headache", "dry mouth", "sweating"],
+      "urgent": ["seizure", "shallow breathing", "severe confusion", "serotonin syndrome", "suicidal thoughts"]
+    },
+    "oxycodone": {
+      "aliases": ["oxycontin", "percocet"],
+      "common": ["constipation", "nausea", "sleepiness", "dizziness", "itching", "dry mouth"],
+      "urgent": ["shallow breathing", "severe confusion", "fainting", "very slow heartbeat"]
+    },
+    "hydrocodone": {
+      "aliases": ["norco", "vicodin"],
+      "common": ["constipation", "nausea", "sleepiness", "dizziness", "itching"],
+      "urgent": ["shallow breathing", "severe confusion", "fainting", "very slow heartbeat"]
+    },
+    "morphine": {
+      "aliases": ["ms contin"],
+      "common": ["constipation", "nausea", "sleepiness", "dizziness", "itching", "sweating"],
+      "urgent": ["shallow breathing", "severe confusion", "fainting", "very slow heartbeat"]
+    },
+    "gabapentin": {
+      "aliases": ["neurontin"],
+      "common": ["sleepiness", "dizziness", "unsteadiness", "swelling", "weight gain", "blurred vision"],
+      "urgent": ["shallow breathing", "severe confusion", "suicidal thoughts", "severe rash"]
+    },
+    "pregabalin": {
+      "aliases": ["lyrica"],
+      "common": ["sleepiness", "dizziness", "swelling", "weight gain", "blurred vision", "dry mouth"],
+      "urgent": ["shallow breathing", "severe confusion", "suicidal thoughts", "severe rash"]
+    },
+    "omeprazole": {
+      "aliases": ["prilosec"],
+      "common": ["headache", "diarrhea", "constipation", "nausea", "gas", "abdominal pain"],
+      "urgent": ["severe diarrhea", "muscle cramps", "seizure", "irregular heartbeat", "bone fracture"]
+    },
+    "pantoprazole": {
+      "aliases": ["protonix"],
+      "common": ["headache", "diarrhea", "nausea", "abdominal pain", "gas"],
+      "urgent": ["severe diarrhea", "muscle cramps", "irregular heartbeat"]
+    },
+    "esomeprazole": {
+      "aliases": ["nexium"],
+      "common": ["headache", "diarrhea", "nausea", "abdominal pain", "gas"],
+      "urgent": ["severe diarrhea", "muscle cramps", "irregular heartbeat"]
+    },
+    "famotidine": {
+      "aliases": ["pepcid"],
+      "common": ["headache", "dizziness", "constipation", "diarrhea"],
+      "urgent": ["confusion", "severe rash", "irregular heartbeat"]
+    },
+    "ondansetron": {
+      "aliases": ["zofran"],
+      "common": ["constipation", "headache", "fatigue", "dry mouth"],
+      "urgent": ["irregular heartbeat", "fainting", "severe rash"]
+    },
+    "docusate": {
+      "aliases": ["colace"],
+      "common": ["diarrhea", "stomach cramps"],
+      "urgent": []
+    },
+    "senna": {
+      "aliases": ["senokot"],
+      "common": ["stomach cramps", "diarrhea", "yellow urine"],
+      "urgent": ["severe diarrhea", "dehydration"]
+    },
+    "prednisone": {
+      "aliases": [],
+      "common": ["insomnia", "increased appetite", "weight gain", "mood changes", "irritability", "swelling", "high blood sugar", "heartburn"],
+      "urgent": ["severe mood changes", "vision changes", "severe stomach pain", "black stool", "very high blood sugar", "swelling of face"]
+    },
+    "dexamethasone": {
+      "aliases": [],
+      "common": ["insomnia", "increased appetite", "mood changes", "swelling", "high blood sugar"],
+      "urgent": ["severe mood changes", "vision changes", "severe stomach pain", "very high blood sugar"]
+    },
+    "alendronate": {
+      "aliases": ["fosamax"],
+      "common": ["heartburn", "abdominal pain", "muscle pain", "joint pain", "nausea"],
+      "urgent": ["severe heartburn", "chest pain when swallowing", "jaw pain", "unusual thigh pain"]
+    },
+    "tamsulosin": {
+      "aliases": ["flomax"],
+      "common": ["dizziness", "headache", "runny nose", "abnormal ejaculation", "low blood pressure"],
+      "urgent": ["fainting", "prolonged erection", "eye changes"]
+    },
+    "finasteride": {
+      "aliases": ["proscar", "propecia"],
+      "common": ["decreased libido", "sexual dysfunction", "breast tenderness"],
+      "urgent": ["breast lump", "severe rash"]
+    },
+    "oxybutynin": {
+      "aliases": ["ditropan"],
+      "common": ["dry mouth", "constipation", "blurred vision", "dizziness", "sleepiness", "urinary retention"],
+      "urgent": ["fainting", "severe confusion", "hallucinations", "trouble urinating"]
+    },
+    "levetiracetam": {
+      "aliases": ["keppra"],
+      "common": ["sleepiness", "dizziness", "weakness", "irritability", "mood changes"],
+      "urgent": ["severe mood changes", "suicidal thoughts", "unusual behavior", "severe rash"]
+    },
+    "carbidopa-levodopa": {
+      "aliases": ["sinemet"],
+      "common": ["nausea", "dizziness", "sleepiness", "loss of appetite", "hallucinations", "dyskinesia", "uncontrolled movements"],
+      "urgent": ["fainting", "sudden sleep attacks", "severe hallucinations", "chest pain"]
+    },
+    "ropinirole": {
+      "aliases": ["requip"],
+      "common": ["nausea", "dizziness", "sleepiness", "hallucinations", "swelling"],
+      "urgent": ["sudden sleep attacks", "compulsive behavior", "severe hallucinations", "fainting"]
+    },
+    "amoxicillin": {
+      "aliases": [],
+      "common": ["diarrhea", "nausea", "rash", "vomiting"],
+      "urgent": ["severe rash", "swelling of face", "trouble breathing", "severe diarrhea", "bloody diarrhea"]
+    },
+    "azithromycin": {
+      "aliases": ["z-pak", "zithromax"],
+      "common": ["diarrhea", "nausea", "vomiting", "abdominal pain"],
+      "urgent": ["severe rash", "irregular heartbeat", "yellow skin", "severe diarrhea", "bloody diarrhea"]
+    },
+    "ciprofloxacin": {
+      "aliases": ["cipro"],
+      "common": ["nausea", "diarrhea", "headache", "dizziness"],
+      "urgent": ["tendon pain", "tendon rupture", "severe rash", "confusion", "irregular heartbeat", "seizure"]
+    },
+    "levofloxacin": {
+      "aliases": ["levaquin"],
+      "common": ["nausea", "diarrhea", "headache", "dizziness", "insomnia"],
+      "urgent": ["tendon pain", "tendon rupture", "severe rash", "confusion", "irregular heartbeat", "seizure"]
+    },
+    "nitrofurantoin": {
+      "aliases": ["macrobid"],
+      "common": ["nausea", "loss of appetite", "headache", "brown urine"],
+      "urgent": ["shortness of breath", "cough", "chest pain", "yellow skin", "numbness", "tingling"]
+    },
+    "trimethoprim-sulfamethoxazole": {
+      "aliases": ["bactrim", "septra"],
+      "common": ["nausea", "vomiting", "loss of appetite", "rash"],
+      "urgent": ["severe rash", "yellow skin", "sore throat", "fever", "confusion", "high potassium"]
+    },
+    "diphenhydramine": {
+      "aliases": ["benadryl"],
+      "common": ["sleepiness", "dry mouth", "constipation", "urinary retention", "blurred vision", "confusion"],
+      "urgent": ["severe confusion", "hallucinations", "fainting", "irregular heartbeat", "fall"]
+    },
+    "montelukast": {
+      "aliases": ["singulair"],
+      "common": ["headache", "abdominal pain", "cough"],
+      "urgent": ["mood changes", "depression", "suicidal thoughts", "hallucinations", "severe rash"]
+    },
+    "latanoprost": {
+      "aliases": ["xalatan"],
+      "common": ["eye irritation", "eye redness", "eye color change", "eyelash growth"],
+      "urgent": ["vision changes", "severe eye pain"]
+    }
+  },
+  "synonyms": {
+    "dizziness": ["dizzy", "lightheaded", "light-headed", "light headed", "woozy", "vertigo", "off-balance", "off balance", "unsteady", "spinning", "faint feeling"],
+    "nausea": ["nauseous", "queasy", "sick to stomach", "sick to my stomach", "upset stomach", "stomach upset", "feeling sick"],
+    "vomiting": ["threw up", "throwing up", "puking", "puked", "vomited", "getting sick", "brought it up"],
+    "fatigue": ["tired", "exhausted", "worn out", "no energy", "sleepy", "lethargic", "drained", "wiped out", "sluggish"],
+    "sleepiness": ["sleepy", "drowsy", "drowsiness", "dozing off", "nodded off", "sedated"],
+    "confusion": ["confused", "disoriented", "muddled", "foggy", "not thinking clearly", "mixed up", "out of it"],
+    "shortness of breath": ["short of breath", "sob", "hard to breathe", "trouble breathing", "winded", "breathless", "gasping", "can't catch her breath", "can't catch his breath"],
+    "swelling": ["swollen", "puffy", "edema", "bloated"],
+    "ankle swelling": ["swollen ankles", "swollen feet", "puffy feet", "puffy ankles"],
+    "muscle pain": ["muscle ache", "muscle aches", "aching muscles", "sore muscles", "myalgia"],
+    "joint pain": ["achy joints", "sore joints", "aching joints", "arthralgia"],
+    "headache": ["head hurts", "head pain", "migraine"],
+    "insomnia": ["can't sleep", "trouble sleeping", "not sleeping", "awake at night", "up all night", "no sleep"],
+    "constipation": ["constipated", "can't go", "hard stool", "haven't gone", "backed up"],
+    "diarrhea": ["loose stool", "watery stool", "runs", "runny stool", "loose bm"],
+    "dry mouth": ["mouth is dry", "cotton mouth", "no saliva"],
+    "loss of appetite": ["not eating", "no appetite", "poor appetite", "not hungry", "off her food", "off his food"],
+    "weakness": ["weak", "no strength", "feeble"],
+    "tremor": ["shaking", "shaky", "trembling", "hands shake"],
+    "sweating": ["sweaty", "perspiring", "clammy", "diaphoretic"],
+    "rash": ["hives", "skin breakout", "spots", "red skin", "itchy skin"],
+    "fainting": ["passed out", "syncope", "blacked out", "collapsed", "fell out"],
+    "fall": ["fell", "took a fall", "hit the floor", "went down"],
+    "low blood sugar": ["hypoglycemia", "sugar was low", "low sugar", "glucose low"],
+    "shakiness": ["shaky", "shaking", "trembly", "jittery"],
+    "yellow skin": ["jaundice", "yellowing skin", "yellow eyes", "sclera yellow"],
+    "yellow eyes": ["jaundice", "yellow whites", "sclera yellow"],
+    "dark urine": ["cola urine", "tea colored urine", "brown urine"],
+    "black stool": ["black bm", "tarry stool", "melena"],
+    "blood in stool": ["bloody stool", "red in stool", "hematochezia"],
+    "vomiting blood": ["threw up blood", "coffee ground vomit", "hematemesis"],
+    "chest pain": ["chest pressure", "chest tightness", "chest discomfort", "chest heavy"],
+    "palpitations": ["heart racing", "racing heart", "fluttering heart", "pounding heart"],
+    "rapid heartbeat": ["fast heart rate", "tachycardia", "heart racing"],
+    "slow heartbeat": ["heart slow", "bradycardia", "slow pulse"],
+    "irregular heartbeat": ["skipped beats", "arrhythmia", "irregular pulse"],
+    "hallucinations": ["seeing things", "hearing voices", "not there", "seeing people"],
+    "cough": ["coughing", "hacking"],
+    "dry cough": ["nagging cough", "tickle cough"],
+    "urinary retention": ["can't pee", "trouble urinating", "hard to urinate"],
+    "increased urination": ["peeing more", "going more", "up peeing"],
+    "increased appetite": ["eating more", "always hungry"],
+    "weight loss": ["losing weight", "lost weight", "dropping weight"],
+    "weight gain": ["gaining weight", "gained weight", "putting on weight"],
+    "easy bruising": ["bruising easily", "bruises easy", "new bruises", "unexplained bruises"],
+    "large bruise": ["big bruise", "huge bruise", "purple patch", "hematoma"],
+    "swelling of face": ["face swollen", "puffy face", "lip swelling"],
+    "swelling of tongue": ["tongue swollen", "tongue big"],
+    "swelling of throat": ["throat swollen", "closing throat"],
+    "seizure": ["convulsion", "fit", "seized"],
+    "suicidal thoughts": ["thoughts of suicide", "wants to die", "self harm"],
+    "severe abdominal pain": ["severe belly pain", "terrible stomach pain", "acute abdomen"],
+    "abdominal pain": ["belly pain", "stomach pain", "tummy hurts", "gut pain"]
+  },
+  "environmentalContexts": [
+    "after yard work",
+    "after gardening",
+    "after mowing",
+    "after exercise",
+    "after walking",
+    "after running",
+    "after cleaning",
+    "after shoveling",
+    "from the heat",
+    "in the heat",
+    "hot day",
+    "after eating",
+    "with a cold",
+    "with the flu",
+    "from the flu",
+    "from the cold",
+    "since the fall",
+    "after the fall",
+    "after her fall",
+    "after his fall"
+  ]
+}

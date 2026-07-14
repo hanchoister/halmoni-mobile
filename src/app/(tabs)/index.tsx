@@ -35,7 +35,12 @@ type MedRow = {
   started_at: string | null;
 };
 
-type SymptomRow = { id: string; description: string; observed_at: string };
+type SymptomRow = {
+  id: string;
+  description: string;
+  observed_at: string;
+  possible_med_links: string[] | null;
+};
 
 type HandoffRow = {
   id: string;
@@ -109,11 +114,11 @@ export default function TodayScreen() {
       supabase.from('on_duty').select('*').eq('parent_id', currentParent.id).maybeSingle(),
       supabase
         .from('symptoms')
-        .select('id,description,observed_at')
+        .select('id,description,observed_at,possible_med_links')
         .eq('parent_id', currentParent.id)
         .gte('observed_at', since.toISOString())
         .order('observed_at', { ascending: false })
-        .limit(5),
+        .limit(30),
       supabase
         .from('handoffs')
         .select('*')

@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -45,6 +45,24 @@ const KINDS: { id: Kind; label: string }[] = [
   { id: 'other', label: 'Note' },
 ];
 
+function buildSummaryFromNotes(notes: VisitNote[]): string {
+  const parts: string[] = [];
+  const group = (k: Kind) => notes.filter((n) => n.kind === k);
+  const diag = group('diagnosis');
+  const newMeds = group('new-med');
+  const stopMeds = group('stop-med');
+  const followUps = group('follow-up');
+  const instructions = group('instruction');
+  const others = notes.filter((n) => n.kind === 'voice' || n.kind === 'other');
+  if (diag.length) parts.push(`Diagnosis: ${diag.map((n) => n.body).join('; ')}.`);
+  if (newMeds.length) parts.push(`New medication: ${newMeds.map((n) => n.body).join('; ')}.`);
+  if (stopMeds.length) parts.push(`Stop: ${stopMeds.map((n) => n.body).join('; ')}.`);
+  if (followUps.length) parts.push(`Follow-up: ${followUps.map((n) => n.body).join('; ')}.`);
+  if (instructions.length) parts.push(`Instructions: ${instructions.map((n) => n.body).join('; ')}.`);
+  if (others.length) parts.push(others.map((n) => n.body).join(' '));
+  return parts.join(' ') || 'Visit completed. No structured notes captured.';
+}
+
 export default function VisitMode() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { currentParent } = useParents();
@@ -71,11 +89,12 @@ export default function VisitMode() {
         .order('captured_at', { ascending: true }),
     ]);
     const a = apptRes.data as Appt | null;
+    const loadedNotes = (notesRes.data as VisitNote[] | null) ?? [];
     setAppt(a);
-    setNotes((notesRes.data as VisitNote[] | null) ?? []);
+    setNotes(loadedNotes);
     if (a) {
       setPrepDraft(a.prep_notes ?? '');
-      setSummaryDraft(a.summary ?? '');
+      setSummaryDraft(a.summary ?? buildSummaryFromNotes(loadedNotes));
       if (a.status === 'completed') setTab('summary');
     }
     setLoading(false);
@@ -128,33 +147,37 @@ export default function VisitMode() {
     await load();
   }
 
-  function buildSummary(): string {
-    const parts: string[] = [];
-    const group = (k: Kind) => notes.filter((n) => n.kind === k);
-    const diag = group('diagnosis');
-    const newMeds = group('new-med');
-    const stopMeds = group('stop-med');
-    const followUps = group('follow-up');
-    const instructions = group('instruction');
-    const others = notes.filter((n) => n.kind === 'voice' || n.kind === 'other');
-    if (diag.length) parts.push(`Diagnosis: ${diag.map((n) => n.body).join('; ')}.`);
-    if (newMeds.length) parts.push(`New medication: ${newMeds.map((n) => n.body).join('; ')}.`);
-    if (stopMeds.length) parts.push(`Stop: ${stopMeds.map((n) => n.body).join('; ')}.`);
-    if (followUps.length) parts.push(`Follow-up: ${followUps.map((n) => n.body).join('; ')}.`);
-    if (instructions.length) parts.push(`Instructions: ${instructions.map((n) => n.body).join('; ')}.`);
-    if (others.length) parts.push(others.map((n) => n.body).join(' '));
-    return parts.join(' ') || 'Visit completed. No structured notes captured.';
+  const autoSummary = buildSummaryFromNotes(notes);
+
+  function buildShareText(): string {
+    if (!appt) return '';
+    const parentLabel =
+      currentParent?.nickname?.trim() || currentParent?.name || 'our parent';
+    const body = summaryDraft.trim() || autoSummary;
+    const header = `${appt.provider_name} visit — ${parentLabel}\n${formatDate(appt.starts_at)}`;
+    const footer = '—\nSent from Halmoni · coordinate care for aging parents · https://halmoni.uk';
+    return `${header}\n\n${body}\n\n${footer}`;
   }
 
-  async function finalize() {
-    if (!appt || !currentParent) return;
-    const text = summaryDraft.trim() || buildSummary();
-    setBusy(true);
+  async function saveSummary(): Promise<string | null> {
+    if (!appt || !currentParent) return null;
+    const text = summaryDraft.trim() || autoSummary;
     const { error } = await supabase
       .from('appointments')
       .update({ summary: text, status: 'completed' })
       .eq('id', appt.id);
-    if (!error) {
+    if (error) {
+      Alert.alert('Could not save', error.message);
+      return null;
+    }
+    return text;
+  }
+
+  async function finalize() {
+    if (!appt) return;
+    setBusy(true);
+    const text = await saveSummary();
+    if (text) {
       await supabase.from('thread_messages').insert({
         family_id: appt.family_id,
         parent_id: appt.parent_id,
@@ -163,9 +186,20 @@ export default function VisitMode() {
       });
     }
     setBusy(false);
-    if (error) {
-      Alert.alert('Could not save', error.message);
-      return;
+    if (!text) return;
+    router.replace(`/appointment/${appt.id}`);
+  }
+
+  async function shareExternally() {
+    if (!appt) return;
+    setBusy(true);
+    const text = await saveSummary();
+    setBusy(false);
+    if (!text) return;
+    try {
+      await Share.share({ message: buildShareText() });
+    } catch (e) {
+      // user dismissed or share failed; summary is already saved
     }
     router.replace(`/appointment/${appt.id}`);
   }
@@ -261,18 +295,25 @@ export default function VisitMode() {
         <>
           <Card tint="sage">
             <Text style={styles.sectionLabel}>AUTO-BUILT SUMMARY</Text>
-            <Text style={styles.body}>{buildSummary()}</Text>
+            <Text style={styles.body}>{autoSummary}</Text>
           </Card>
 
           <Card>
             <Text style={styles.sectionLabel}>EDIT BEFORE SHARING</Text>
             <Input
-              value={summaryDraft || buildSummary()}
+              value={summaryDraft}
               onChangeText={setSummaryDraft}
               multiline
             />
             <View style={{ height: spacing.sm }} />
             <Button title="Share with family" onPress={finalize} busy={busy} />
+            <View style={{ height: spacing.sm }} />
+            <Button
+              title="Send via text"
+              onPress={shareExternally}
+              variant="secondary"
+              busy={busy}
+            />
           </Card>
         </>
       )}
