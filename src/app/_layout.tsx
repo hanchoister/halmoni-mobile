@@ -4,6 +4,7 @@ import { ActivityIndicator, View } from 'react-native';
 
 import { LoginScreen } from '@/components/login-screen';
 import { OnboardingScreen } from '@/components/onboarding-screen';
+import { HeaderBackButton } from '@/components/ui/header-back';
 import { WelcomeScreen } from '@/components/welcome-screen';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { enableDemoMode, useDemoMode } from '@/lib/demo-mode';
@@ -33,6 +34,9 @@ function AppStack() {
         headerStyle: { backgroundColor: palette.cream50 },
         headerTintColor: palette.ink900,
         headerTitleStyle: { fontWeight: '700' },
+        headerShadowVisible: false,
+        headerBackTitle: 'Back',
+        headerLeft: () => <HeaderBackButton />,
         contentStyle: { backgroundColor: palette.cream50 },
       }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
