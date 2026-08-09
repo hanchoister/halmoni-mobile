@@ -18,11 +18,18 @@ import { OnboardingScreen } from '@/components/onboarding-screen';
 import { HeaderBackButton } from '@/components/ui/header-back';
 import { WelcomeScreen } from '@/components/welcome-screen';
 import { AuthProvider, useAuth } from '@/lib/auth';
-import { enableDemoMode, useDemoMode } from '@/lib/demo-mode';
+import { enableDemoMode, isDemoMode, useDemoMode } from '@/lib/demo-mode';
 import { FamilyProvider, useFamily } from '@/lib/family';
 import { MeProvider } from '@/lib/me';
 import { ParentProvider } from '@/lib/parent';
+import { SyncProvider } from '@/lib/sync';
 import { palette } from '@/lib/theme';
+
+// Sync targets real Supabase; skip it in demo mode (in-memory backend).
+function MaybeSyncProvider({ children }: { children: React.ReactNode }) {
+  if (isDemoMode()) return <>{children}</>;
+  return <SyncProvider>{children}</SyncProvider>;
+}
 
 function Spinner() {
   return (
@@ -92,9 +99,11 @@ function RootNavigator() {
   if (loading) return <Spinner />;
   if (session || demoMode) {
     return (
-      <FamilyProvider>
-        <FamilyGate />
-      </FamilyProvider>
+      <MaybeSyncProvider>
+        <FamilyProvider>
+          <FamilyGate />
+        </FamilyProvider>
+      </MaybeSyncProvider>
     );
   }
   if (showLogin) return <LoginScreen />;
