@@ -1,0 +1,19 @@
+# Supabase local project config.
+# Apply migrations with: supabase db push  (requires linked remote project)
+# Or paste each migrations/*.sql into the SQL editor in order.
+
+project_id = "halmoni"
+
+[db]
+port = 54322
+major_version = 15
+
+[db.pooler]
+enabled = false
+
+[realtime]
+enabled = true
+
+[storage]
+enabled = true
+file_size_limit = "5MiB"
