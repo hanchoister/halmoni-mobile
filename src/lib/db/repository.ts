@@ -1,0 +1,236 @@
+// Generic repository over the local SQLite mirror. Handles JSON column
+// serialization + boolean 0/1 <-> boolean conversion at the boundary so
+// callers see the same shapes as Supabase returns.
+
+import { getDb } from '@/lib/db/client';
+import {
+  BOOL_COLUMNS,
+  JSON_COLUMNS,
+  SYNCABLE_TABLES,
+  SyncableTable,
+} from '@/lib/db/schema';
+
+type Row = Record<string, any>;
+
+function encode(table: string, row: Row): Row {
+  const jsonCols = JSON_COLUMNS[table] ?? [];
+  const boolCols = BOOL_COLUMNS[table] ?? [];
+  const out: Row = { ...row };
+  for (const col of jsonCols) {
+    if (out[col] !== undefined && out[col] !== null && typeof out[col] !== 'string') {
+      out[col] = JSON.stringify(out[col]);
+    }
+  }
+  for (const col of boolCols) {
+    if (typeof out[col] === 'boolean') {
+      out[col] = out[col] ? 1 : 0;
+    }
+  }
+  return out;
+}
+
+function decode(table: string, row: Row | null): Row | null {
+  if (!row) return null;
+  const jsonCols = JSON_COLUMNS[table] ?? [];
+  const boolCols = BOOL_COLUMNS[table] ?? [];
+  const out: Row = { ...row };
+  for (const col of jsonCols) {
+    if (typeof out[col] === 'string') {
+      try {
+        out[col] = JSON.parse(out[col]);
+      } catch {
+        // leave as string if malformed — worst case UI shows raw text
+      }
+    }
+  }
+  for (const col of boolCols) {
+    if (typeof out[col] === 'number') {
+      out[col] = out[col] === 1;
+    }
+  }
+  return out;
+}
+
+function decodeAll(table: string, rows: Row[]): Row[] {
+  return rows.map((r) => decode(table, r) as Row);
+}
+
+/** Insert or overwrite (by id). Serializes JSON + boolean columns. */
+export async function upsertRow(table: SyncableTable, row: Row): Promise<void> {
+  const db = await getDb();
+  const encoded = encode(table, row);
+  const cols = Object.keys(encoded);
+  const placeholders = cols.map(() => '?').join(', ');
+  const setClause = cols
+    .filter((c) => c !== 'id')
+    .map((c) => `${c} = excluded.${c}`)
+    .join(', ');
+  const sql =
+    `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${placeholders}) ` +
+    `ON CONFLICT(id) DO UPDATE SET ${setClause}`;
+  await db.runAsync(sql, ...cols.map((c) => encoded[c] ?? null));
+}
+
+export async function upsertRows(table: SyncableTable, rows: Row[]): Promise<void> {
+  if (rows.length === 0) return;
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    for (const row of rows) {
+      await upsertRow(table, row);
+    }
+  });
+}
+
+/** Soft delete — writes deleted_at + bumps updated_at. */
+export async function softDelete(table: SyncableTable, id: string): Promise<void> {
+  const db = await getDb();
+  const now = new Date().toISOString();
+  await db.runAsync(
+    `UPDATE ${table} SET deleted_at = ?, updated_at = ? WHERE id = ?`,
+    now,
+    now,
+    id,
+  );
+}
+
+export async function getById(table: SyncableTable, id: string): Promise<Row | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<Row>(
+    `SELECT * FROM ${table} WHERE id = ? AND deleted_at IS NULL`,
+    id,
+  );
+  return decode(table, row ?? null);
+}
+
+/**
+ * List rows matching an eq-filter map. Excludes soft-deleted rows.
+ * orderBy: 'col ASC' | 'col DESC'
+ */
+export async function list(
+  table: SyncableTable,
+  filters: Record<string, any> = {},
+  opts: { orderBy?: string; limit?: number } = {},
+): Promise<Row[]> {
+  const db = await getDb();
+  const wheres = ['deleted_at IS NULL'];
+  const params: any[] = [];
+  for (const [k, v] of Object.entries(filters)) {
+    if (v === null) {
+      wheres.push(`${k} IS NULL`);
+    } else {
+      wheres.push(`${k} = ?`);
+      params.push(v);
+    }
+  }
+  let sql = `SELECT * FROM ${table} WHERE ${wheres.join(' AND ')}`;
+  if (opts.orderBy) sql += ` ORDER BY ${opts.orderBy}`;
+  if (opts.limit != null) sql += ` LIMIT ${opts.limit}`;
+  const rows = await db.getAllAsync<Row>(sql, ...params);
+  return decodeAll(table, rows);
+}
+
+/** Every row in a table, including tombstones. Used by the sync engine. */
+export async function listRawWithTombstones(table: SyncableTable): Promise<Row[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<Row>(`SELECT * FROM ${table}`);
+  return decodeAll(table, rows);
+}
+
+/** Max updated_at we've seen locally for a table. Anchor for delta pulls. */
+export async function maxUpdatedAt(table: SyncableTable): Promise<string | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ max_ua: string | null }>(
+    `SELECT MAX(updated_at) AS max_ua FROM ${table}`,
+  );
+  return row?.max_ua ?? null;
+}
+
+// ---- sync_meta helpers -----------------------------------------------------
+
+export async function getLastPulledAt(table: SyncableTable): Promise<string> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ last_pulled_at: string }>(
+    `SELECT last_pulled_at FROM sync_meta WHERE table_name = ?`,
+    table,
+  );
+  return row?.last_pulled_at ?? '1970-01-01T00:00:00Z';
+}
+
+export async function setLastPulledAt(table: SyncableTable, at: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT INTO sync_meta (table_name, last_pulled_at) VALUES (?, ?) ` +
+      `ON CONFLICT(table_name) DO UPDATE SET last_pulled_at = excluded.last_pulled_at`,
+    table,
+    at,
+  );
+}
+
+// ---- pending_writes queue --------------------------------------------------
+
+export type PendingOp = 'insert' | 'update' | 'delete';
+
+export async function enqueueWrite(
+  table: SyncableTable,
+  op: PendingOp,
+  row: Row,
+): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT INTO pending_writes (table_name, op, row_id, payload, enqueued_at) ` +
+      `VALUES (?, ?, ?, ?, ?)`,
+    table,
+    op,
+    row.id,
+    JSON.stringify(row),
+    new Date().toISOString(),
+  );
+}
+
+export async function listPendingWrites(): Promise<
+  Array<{ id: number; table_name: SyncableTable; op: PendingOp; row_id: string; payload: string; attempts: number }>
+> {
+  const db = await getDb();
+  return db.getAllAsync(
+    `SELECT id, table_name, op, row_id, payload, attempts FROM pending_writes ORDER BY id`,
+  );
+}
+
+export async function markWriteAttempted(id: number, error?: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `UPDATE pending_writes SET attempts = attempts + 1, last_error = ? WHERE id = ?`,
+    error ?? null,
+    id,
+  );
+}
+
+export async function deleteWrite(id: number): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(`DELETE FROM pending_writes WHERE id = ?`, id);
+}
+
+// ---- known_ids -------------------------------------------------------------
+
+export async function recordKnownId(table: SyncableTable, id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT INTO known_ids (table_name, row_id, seen_at) VALUES (?, ?, ?) ` +
+      `ON CONFLICT(table_name, row_id) DO UPDATE SET seen_at = excluded.seen_at`,
+    table,
+    id,
+    new Date().toISOString(),
+  );
+}
+
+export async function isKnownId(table: SyncableTable, id: string): Promise<boolean> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM known_ids WHERE table_name = ? AND row_id = ?`,
+    table,
+    id,
+  );
+  return (row?.n ?? 0) > 0;
+}
+
+export { SYNCABLE_TABLES };
