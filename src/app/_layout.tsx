@@ -24,6 +24,7 @@ import { MeProvider, useMe } from '@/lib/me';
 import { ParentProvider } from '@/lib/parent';
 import { beatPresence } from '@/lib/presence';
 import { ErrorBoundary } from '@/lib/reliability/error-boundary';
+import { BiometricLockGate } from '@/lib/security/lock-gate';
 import { SyncProvider } from '@/lib/sync';
 import { startRealtime, stopRealtime } from '@/lib/sync/realtime';
 import { palette } from '@/lib/theme';
@@ -161,9 +162,11 @@ export default function RootLayout() {
   if (!fontsLoaded) return <Spinner />;
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <RootNavigator />
-      </AuthProvider>
+      <BiometricLockGate>
+        <AuthProvider>
+          <RootNavigator />
+        </AuthProvider>
+      </BiometricLockGate>
     </ErrorBoundary>
   );
 }
