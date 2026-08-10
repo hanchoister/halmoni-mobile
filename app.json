@@ -8,7 +8,12 @@
     "scheme": "halmoni",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.hanachoi.halmoni",
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -37,7 +42,13 @@
       ],
       "expo-web-browser",
       "expo-font",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Halmoni uses Face ID to unlock the app so your family's medical info stays private."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

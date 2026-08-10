@@ -79,8 +79,12 @@ function AppStack() {
   );
 }
 
-// Beats presence once on mount, on foreground, and every 60s while active.
-// Lives inside MeProvider so `me.id` is available; no-op in demo mode.
+// Beats presence on mount, on foreground, and every 5 min while active. That
+// cadence is enough for "active Xm ago" precision without burning Supabase
+// writes — a 60s interval put 50 active users past the free-tier write budget.
+// No-op in demo mode.
+const PRESENCE_INTERVAL_MS = 5 * 60_000;
+
 function PresenceHeartbeat() {
   const { me } = useMe();
   const { familyId } = useFamily();
@@ -89,7 +93,7 @@ function PresenceHeartbeat() {
     void beatPresence(me.id, familyId);
     const interval = setInterval(() => {
       void beatPresence(me.id, familyId);
-    }, 60_000);
+    }, PRESENCE_INTERVAL_MS);
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') void beatPresence(me.id, familyId);
     });
