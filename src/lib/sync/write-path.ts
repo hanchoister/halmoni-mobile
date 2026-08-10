@@ -6,6 +6,8 @@
 
 import { enqueueWrite, softDelete, upsertRow } from '@/lib/db/repository';
 import type { SyncableTable } from '@/lib/db/schema';
+import { bumpDataVersion } from '@/lib/db/signal';
+import { isDemoMode } from '@/lib/demo-mode';
 
 // Registered by SyncProvider on mount so write helpers can nudge the engine
 // without importing the React tree.
@@ -31,18 +33,26 @@ export async function writeRow(
 ): Promise<void> {
   const stamped = stampWrite(row);
   await upsertRow(table, stamped);
-  await enqueueWrite(table, 'update', stamped);
-  nudge();
+  // Demo mode never talks to Supabase — skip the outbound queue so demo
+  // writes stay self-contained and don't leak into a real account later.
+  if (!isDemoMode()) {
+    await enqueueWrite(table, 'update', stamped);
+    nudge();
+  }
+  bumpDataVersion();
 }
 
 /** Soft-delete a row (sets deleted_at locally and enqueues the tombstone). */
 export async function deleteRow(table: SyncableTable, id: string): Promise<void> {
   const now = new Date().toISOString();
   await softDelete(table, id);
-  await enqueueWrite(table, 'delete', {
-    id,
-    deleted_at: now,
-    updated_at: now,
-  });
-  nudge();
+  if (!isDemoMode()) {
+    await enqueueWrite(table, 'delete', {
+      id,
+      deleted_at: now,
+      updated_at: now,
+    });
+    nudge();
+  }
+  bumpDataVersion();
 }

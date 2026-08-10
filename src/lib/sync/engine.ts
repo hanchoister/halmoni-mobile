@@ -22,6 +22,7 @@ import {
   upsertRows,
 } from '@/lib/db/repository';
 import type { SyncableTable } from '@/lib/db/schema';
+import { bumpDataVersion } from '@/lib/db/signal';
 import { withRetry } from '@/lib/reliability/retry';
 
 const PULL_BATCH_LIMIT = 500;
@@ -116,5 +117,7 @@ export async function syncOnce(): Promise<SyncResult> {
   const t0 = Date.now();
   const pushed = await pushOnce();
   const pulled = await pullOnce();
+  const totalPulled = Object.values(pulled).reduce((a, b) => a + (b ?? 0), 0);
+  if (totalPulled > 0) bumpDataVersion();
   return { pushed, pulled, durationMs: Date.now() - t0 };
 }

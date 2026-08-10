@@ -19,6 +19,7 @@ import { HeaderBackButton } from '@/components/ui/header-back';
 import { WelcomeScreen } from '@/components/welcome-screen';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { enableDemoMode, isDemoMode, useDemoMode } from '@/lib/demo-mode';
+import { seedDemoDataIntoDb } from '@/lib/demo-seed';
 import { FamilyProvider, useFamily } from '@/lib/family';
 import { MeProvider, useMe } from '@/lib/me';
 import { ParentProvider } from '@/lib/parent';
@@ -131,6 +132,11 @@ function RootNavigator() {
   useEffect(() => {
     if (process.env.EXPO_PUBLIC_START_IN_DEMO === '1') enableDemoMode();
   }, []);
+  // Seed the local SQLite mirror from fixtures every time demo mode activates
+  // so screens (which read from the mirror) render immediately.
+  useEffect(() => {
+    if (demoMode) void seedDemoDataIntoDb();
+  }, [demoMode]);
   if (loading) return <Spinner />;
   if (session || demoMode) {
     return (

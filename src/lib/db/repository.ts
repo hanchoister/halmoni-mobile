@@ -105,11 +105,20 @@ export async function getById(table: SyncableTable, id: string): Promise<Row | n
 /**
  * List rows matching an eq-filter map. Excludes soft-deleted rows.
  * orderBy: 'col ASC' | 'col DESC'
+ * gte/lte: inclusive range filters — `{ scheduled_at: '2026-01-01' }`.
+ * isNull/notNull: presence filters — `['accepted_at']`.
  */
 export async function list(
   table: SyncableTable,
   filters: Record<string, any> = {},
-  opts: { orderBy?: string; limit?: number } = {},
+  opts: {
+    orderBy?: string;
+    limit?: number;
+    gte?: Record<string, any>;
+    lte?: Record<string, any>;
+    isNull?: string[];
+    notNull?: string[];
+  } = {},
 ): Promise<Row[]> {
   const db = await getDb();
   const wheres = ['deleted_at IS NULL'];
@@ -122,6 +131,16 @@ export async function list(
       params.push(v);
     }
   }
+  for (const [k, v] of Object.entries(opts.gte ?? {})) {
+    wheres.push(`${k} >= ?`);
+    params.push(v);
+  }
+  for (const [k, v] of Object.entries(opts.lte ?? {})) {
+    wheres.push(`${k} <= ?`);
+    params.push(v);
+  }
+  for (const k of opts.isNull ?? []) wheres.push(`${k} IS NULL`);
+  for (const k of opts.notNull ?? []) wheres.push(`${k} IS NOT NULL`);
   let sql = `SELECT * FROM ${table} WHERE ${wheres.join(' AND ')}`;
   if (opts.orderBy) sql += ` ORDER BY ${opts.orderBy}`;
   if (opts.limit != null) sql += ` LIMIT ${opts.limit}`;

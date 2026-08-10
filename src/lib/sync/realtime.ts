@@ -16,6 +16,7 @@ import type {
 import { supabase } from '@/lib/supabase';
 import { recordKnownId, upsertRow } from '@/lib/db/repository';
 import type { SyncableTable } from '@/lib/db/schema';
+import { bumpDataVersion } from '@/lib/db/signal';
 
 const LIVE_TABLES: SyncableTable[] = [
   'families',
@@ -53,6 +54,7 @@ async function handleEvent(
       : row;
   await upsertRow(table, stamped);
   await recordKnownId(table, stamped.id as string);
+  bumpDataVersion();
 }
 
 /** Open (or replace) the realtime channel scoped to a family. */
