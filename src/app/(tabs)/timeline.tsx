@@ -1,15 +1,16 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Avatar } from '@/components/ui/avatar';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Screen } from '@/components/ui/screen';
+import { list } from '@/lib/db/repository';
+import { useDataVersion } from '@/lib/db/signal';
 import { formatRelative } from '@/lib/format';
 import { useMe } from '@/lib/me';
 import { useParents } from '@/lib/parent';
-import { supabase } from '@/lib/supabase';
 import { palette, radius, spacing } from '@/lib/theme';
 
 type TimelineItem = {
@@ -27,6 +28,7 @@ type Filter = 'all' | 'doses' | 'symptoms' | 'notes' | 'visits' | 'handoffs';
 export default function TimelineScreen() {
   const { currentParent } = useParents();
   const { siblings } = useMe();
+  const dataVersion = useDataVersion();
   const [items, setItems] = useState<TimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>('all');
@@ -42,53 +44,52 @@ export default function TimelineScreen() {
     since.setDate(since.getDate() - 21);
     const sinceIso = since.toISOString();
 
-    const [doseRes, sympRes, noteRes, apptRes, msgRes, handoffRes, medsRes] = await Promise.all([
-      supabase
-        .from('med_doses')
-        .select('*')
-        .gte('given_at', sinceIso)
-        .order('given_at', { ascending: false })
-        .limit(40),
-      supabase
-        .from('symptoms')
-        .select('*')
-        .eq('parent_id', currentParent.id)
-        .gte('observed_at', sinceIso)
-        .order('observed_at', { ascending: false }),
-      supabase
-        .from('notes')
-        .select('*')
-        .eq('parent_id', currentParent.id)
-        .gte('created_at', sinceIso)
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('appointments')
-        .select('*')
-        .eq('parent_id', currentParent.id)
-        .gte('starts_at', sinceIso)
-        .order('starts_at', { ascending: false }),
-      supabase
-        .from('thread_messages')
-        .select('*')
-        .eq('parent_id', currentParent.id)
-        .gte('created_at', sinceIso)
-        .order('created_at', { ascending: false })
-        .limit(20),
-      supabase
-        .from('handoffs')
-        .select('*')
-        .eq('parent_id', currentParent.id)
-        .gte('sent_at', sinceIso)
-        .order('sent_at', { ascending: false }),
-      supabase.from('medications').select('id,name').eq('parent_id', currentParent.id),
-    ]);
+    const [doseRows, sympRows, noteRows, apptRows, msgRows, handoffRows, medRows] =
+      await Promise.all([
+        list(
+          'med_doses',
+          {},
+          {
+            gte: { given_at: sinceIso },
+            notNull: ['given_at'],
+            orderBy: 'given_at DESC',
+            limit: 40,
+          },
+        ),
+        list(
+          'symptoms',
+          { parent_id: currentParent.id },
+          { gte: { observed_at: sinceIso }, orderBy: 'observed_at DESC' },
+        ),
+        list(
+          'notes',
+          { parent_id: currentParent.id },
+          { gte: { created_at: sinceIso }, orderBy: 'created_at DESC' },
+        ),
+        list(
+          'appointments',
+          { parent_id: currentParent.id },
+          { gte: { starts_at: sinceIso }, orderBy: 'starts_at DESC' },
+        ),
+        list(
+          'thread_messages',
+          { parent_id: currentParent.id },
+          { gte: { created_at: sinceIso }, orderBy: 'created_at DESC', limit: 20 },
+        ),
+        list(
+          'handoffs',
+          { parent_id: currentParent.id },
+          { gte: { sent_at: sinceIso }, orderBy: 'sent_at DESC' },
+        ),
+        list('medications', { parent_id: currentParent.id }),
+      ]);
 
-    const meds = (medsRes.data as { id: string; name: string }[] | null) ?? [];
-    const medIds = new Set(meds.map((m) => m.id));
-    const medName = (id: string) => meds.find((m) => m.id === id)?.name ?? 'Medication';
+    const medIds = new Set(medRows.map((m) => m.id as string));
+    const medName = (id: string) =>
+      (medRows.find((m) => m.id === id)?.name as string | undefined) ?? 'Medication';
 
     const all: TimelineItem[] = [];
-    for (const d of (doseRes.data ?? []) as any[]) {
+    for (const d of doseRows) {
       if (d.given_at && medIds.has(d.medication_id)) {
         all.push({
           id: `d-${d.id}`,
@@ -99,7 +100,7 @@ export default function TimelineScreen() {
         });
       }
     }
-    for (const s of (sympRes.data ?? []) as any[]) {
+    for (const s of sympRows) {
       all.push({
         id: `s-${s.id}`,
         kind: 'symptom',
@@ -109,7 +110,7 @@ export default function TimelineScreen() {
         authorMemberId: s.observed_by_member_id,
       });
     }
-    for (const n of (noteRes.data ?? []) as any[]) {
+    for (const n of noteRows) {
       all.push({
         id: `n-${n.id}`,
         kind: 'note',
@@ -119,7 +120,7 @@ export default function TimelineScreen() {
         authorMemberId: n.author_member_id,
       });
     }
-    for (const a of (apptRes.data ?? []) as any[]) {
+    for (const a of apptRows) {
       all.push({
         id: `a-${a.id}`,
         kind: 'visit',
@@ -129,7 +130,7 @@ export default function TimelineScreen() {
         linkTo: `/appointment/${a.id}`,
       });
     }
-    for (const m of (msgRes.data ?? []) as any[]) {
+    for (const m of msgRows) {
       all.push({
         id: `m-${m.id}`,
         kind: 'message',
@@ -139,7 +140,7 @@ export default function TimelineScreen() {
         authorMemberId: m.author_member_id,
       });
     }
-    for (const h of (handoffRes.data ?? []) as any[]) {
+    for (const h of handoffRows) {
       all.push({
         id: `h-${h.id}`,
         kind: 'handoff',
@@ -159,6 +160,10 @@ export default function TimelineScreen() {
       load();
     }, [load]),
   );
+
+  useEffect(() => {
+    if (dataVersion > 0) void load();
+  }, [dataVersion, load]);
 
   if (!currentParent) {
     return (

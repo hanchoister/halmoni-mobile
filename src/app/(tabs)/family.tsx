@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert, Linking, Pressable, RefreshControl, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Avatar } from '@/components/ui/avatar';
@@ -9,11 +9,15 @@ import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Pill } from '@/components/ui/pill';
 import { Screen } from '@/components/ui/screen';
+import { list } from '@/lib/db/repository';
+import { useDataVersion } from '@/lib/db/signal';
 import { useFamily } from '@/lib/family';
 import { formatRelative } from '@/lib/format';
 import { useMe } from '@/lib/me';
+import { newId } from '@/lib/newid';
 import { useParents } from '@/lib/parent';
 import { supabase } from '@/lib/supabase';
+import { writeRow } from '@/lib/sync/write-path';
 import { palette, radius, spacing } from '@/lib/theme';
 
 type ThreadRow = {
@@ -40,6 +44,7 @@ export default function FamilyScreen() {
   const { familyId } = useFamily();
   const { currentParent } = useParents();
   const { me, siblings, refresh: refreshMe } = useMe();
+  const dataVersion = useDataVersion();
   const [thread, setThread] = useState<ThreadRow[]>([]);
   const [handoffs, setHandoffs] = useState<HandoffRow[]>([]);
   const [onDuty, setOnDuty] = useState<OnDutyRow | null>(null);
@@ -53,24 +58,24 @@ export default function FamilyScreen() {
       return;
     }
     setLoading(true);
-    const [threadRes, handoffsRes, onDutyRes] = await Promise.all([
-      supabase
-        .from('thread_messages')
-        .select('*')
-        .eq('parent_id', currentParent.id)
-        .order('created_at', { ascending: true })
-        .limit(50),
-      supabase
-        .from('handoffs')
-        .select('*')
-        .eq('parent_id', currentParent.id)
-        .order('sent_at', { ascending: false })
-        .limit(5),
-      supabase.from('on_duty').select('*').eq('parent_id', currentParent.id).maybeSingle(),
+    const [threadRows, handoffRows, dutyRows] = await Promise.all([
+      list(
+        'thread_messages',
+        { parent_id: currentParent.id },
+        { orderBy: 'created_at ASC', limit: 50 },
+      ) as Promise<ThreadRow[]>,
+      list(
+        'handoffs',
+        { parent_id: currentParent.id },
+        { orderBy: 'sent_at DESC', limit: 5 },
+      ) as Promise<HandoffRow[]>,
+      list('on_duty', { parent_id: currentParent.id }, { limit: 1 }) as Promise<
+        OnDutyRow[]
+      >,
     ]);
-    setThread((threadRes.data as ThreadRow[] | null) ?? []);
-    setHandoffs((handoffsRes.data as HandoffRow[] | null) ?? []);
-    setOnDuty(onDutyRes.data as OnDutyRow | null);
+    setThread(threadRows);
+    setHandoffs(handoffRows);
+    setOnDuty(dutyRows[0] ?? null);
     await refreshMe();
     setLoading(false);
   }, [familyId, currentParent, refreshMe]);
@@ -81,23 +86,31 @@ export default function FamilyScreen() {
     }, [load]),
   );
 
+  useEffect(() => {
+    if (dataVersion > 0) void load();
+  }, [dataVersion, load]);
+
   async function send() {
     if (!me || !familyId || !currentParent || !message.trim()) return;
     const body = message.trim();
     setSending(true);
-    const { error } = await supabase.from('thread_messages').insert({
-      family_id: familyId,
-      parent_id: currentParent.id,
-      body,
-      author_member_id: me.id,
-    });
-    setSending(false);
-    if (error) {
-      Alert.alert('Could not send', error.message);
-      return;
+    try {
+      const now = new Date().toISOString();
+      await writeRow('thread_messages', {
+        id: newId(),
+        family_id: familyId,
+        parent_id: currentParent.id,
+        body,
+        author_member_id: me.id,
+        is_digest: false,
+        created_at: now,
+      });
+      setMessage('');
+    } catch (err) {
+      Alert.alert('Could not send', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSending(false);
     }
-    setMessage('');
-    await load();
   }
 
   async function createInvite() {

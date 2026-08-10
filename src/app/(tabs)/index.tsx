@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { HeadsUp } from '@/components/heads-up';
@@ -9,11 +9,14 @@ import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Pill } from '@/components/ui/pill';
 import { Screen } from '@/components/ui/screen';
+import { list } from '@/lib/db/repository';
+import { useDataVersion } from '@/lib/db/signal';
 import { useFamily } from '@/lib/family';
 import { calcAge, formatRelative, formatTime, isSameDay } from '@/lib/format';
 import { useMe } from '@/lib/me';
+import { newId } from '@/lib/newid';
 import { useParents } from '@/lib/parent';
-import { supabase } from '@/lib/supabase';
+import { writeRow } from '@/lib/sync/write-path';
 import { palette, radius, spacing } from '@/lib/theme';
 
 type DoseRow = {
@@ -62,6 +65,7 @@ type AppointmentRow = {
 };
 
 type OnDutyRow = {
+  id: string;
   member_id: string;
   until: string;
 };
@@ -70,6 +74,7 @@ export default function TodayScreen() {
   const { familyId } = useFamily();
   const { currentParent } = useParents();
   const { me, siblings } = useMe();
+  const dataVersion = useDataVersion();
   const [doses, setDoses] = useState<DoseRow[]>([]);
   const [meds, setMeds] = useState<MedRow[]>([]);
   const [nextAppt, setNextAppt] = useState<AppointmentRow | null>(null);
@@ -93,59 +98,65 @@ export default function TodayScreen() {
     const since = new Date();
     since.setDate(since.getDate() - 21);
 
-    const [medsRes, dosesRes, apptRes, onDutyRes, sympRes, handoffRes] = await Promise.all([
-      supabase.from('medications').select('*').eq('parent_id', currentParent.id),
-      supabase
-        .from('med_doses')
-        .select('*')
-        .eq('family_id', familyId)
-        .gte('scheduled_at', from.toISOString())
-        .lte('scheduled_at', to.toISOString())
-        .order('scheduled_at', { ascending: true }),
-      supabase
-        .from('appointments')
-        .select('*')
-        .eq('parent_id', currentParent.id)
-        .eq('status', 'upcoming')
-        .gte('starts_at', new Date().toISOString())
-        .order('starts_at', { ascending: true })
-        .limit(1)
-        .maybeSingle(),
-      supabase.from('on_duty').select('*').eq('parent_id', currentParent.id).maybeSingle(),
-      supabase
-        .from('symptoms')
-        .select('id,description,observed_at,possible_med_links')
-        .eq('parent_id', currentParent.id)
-        .gte('observed_at', since.toISOString())
-        .order('observed_at', { ascending: false })
-        .limit(30),
-      supabase
-        .from('handoffs')
-        .select('*')
-        .eq('parent_id', currentParent.id)
-        .is('accepted_at', null)
-        .order('sent_at', { ascending: false }),
-    ]);
+    const nowIso = new Date().toISOString();
 
-    const medsList = (medsRes.data as MedRow[] | null) ?? [];
+    const [medsList, todaysDoses, upcomingAppts, dutyRows, sympRows, allHandoffs] =
+      await Promise.all([
+        list('medications', { parent_id: currentParent.id }) as Promise<MedRow[]>,
+        list(
+          'med_doses',
+          { family_id: familyId },
+          {
+            gte: { scheduled_at: from.toISOString() },
+            lte: { scheduled_at: to.toISOString() },
+            orderBy: 'scheduled_at ASC',
+          },
+        ) as Promise<DoseRow[]>,
+        list(
+          'appointments',
+          { parent_id: currentParent.id, status: 'upcoming' },
+          {
+            gte: { starts_at: nowIso },
+            orderBy: 'starts_at ASC',
+            limit: 1,
+          },
+        ) as Promise<AppointmentRow[]>,
+        list('on_duty', { parent_id: currentParent.id }, { limit: 1 }) as Promise<
+          OnDutyRow[]
+        >,
+        list(
+          'symptoms',
+          { parent_id: currentParent.id },
+          {
+            gte: { observed_at: since.toISOString() },
+            orderBy: 'observed_at DESC',
+            limit: 30,
+          },
+        ) as Promise<SymptomRow[]>,
+        list(
+          'handoffs',
+          { parent_id: currentParent.id },
+          { isNull: ['accepted_at'], orderBy: 'sent_at DESC' },
+        ) as Promise<HandoffRow[]>,
+      ]);
+
     const medIds = new Set(medsList.map((m) => m.id));
-    const allDoses = (dosesRes.data as DoseRow[] | null) ?? [];
     setMeds(medsList);
-    setDoses(allDoses.filter((d) => medIds.has(d.medication_id)));
-    setNextAppt(apptRes.data as AppointmentRow | null);
-    setOnDuty(onDutyRes.data as OnDutyRow | null);
-    setSymptoms((sympRes.data as SymptomRow[] | null) ?? []);
-    setHandoffs((handoffRes.data as HandoffRow[] | null) ?? []);
+    setDoses(todaysDoses.filter((d) => medIds.has(d.medication_id)));
+    setNextAppt(upcomingAppts[0] ?? null);
+    setOnDuty(dutyRows[0] ?? null);
+    setSymptoms(sympRows);
+    setHandoffs(allHandoffs);
     setLoading(false);
   }, [familyId, currentParent]);
 
   async function acceptHandoff(id: string) {
-    const { error } = await supabase
-      .from('handoffs')
-      .update({ accepted_at: new Date().toISOString() })
-      .eq('id', id);
-    if (error) throw error;
-    await load();
+    const row = handoffs.find((h) => h.id === id);
+    if (!row) return;
+    await writeRow('handoffs', {
+      ...row,
+      accepted_at: new Date().toISOString(),
+    });
   }
 
   useFocusEffect(
@@ -154,47 +165,55 @@ export default function TodayScreen() {
     }, [load]),
   );
 
+  // Refetch when the local mirror changes (realtime, sync pull, other screens).
+  useEffect(() => {
+    if (dataVersion > 0) void load();
+  }, [dataVersion, load]);
+
   async function markGiven(doseId: string) {
     if (!me) return;
+    const dose = doses.find((d) => d.id === doseId);
+    if (!dose) return;
+    const nowIso = new Date().toISOString();
     setDoses((prev) =>
       prev.map((d) =>
-        d.id === doseId ? { ...d, given_at: new Date().toISOString(), given_by_member_id: me.id } : d,
+        d.id === doseId ? { ...d, given_at: nowIso, given_by_member_id: me.id } : d,
       ),
     );
-    await supabase
-      .from('med_doses')
-      .update({
-        given_at: new Date().toISOString(),
-        given_by_member_id: me.id,
-        skipped: false,
-      })
-      .eq('id', doseId);
+    await writeRow('med_doses', {
+      ...dose,
+      given_at: nowIso,
+      given_by_member_id: me.id,
+      skipped: false,
+    });
   }
 
   async function unmarkGiven(doseId: string) {
+    const dose = doses.find((d) => d.id === doseId);
+    if (!dose) return;
     setDoses((prev) =>
       prev.map((d) => (d.id === doseId ? { ...d, given_at: null, given_by_member_id: null } : d)),
     );
-    await supabase
-      .from('med_doses')
-      .update({ given_at: null, given_by_member_id: null })
-      .eq('id', doseId);
+    await writeRow('med_doses', {
+      ...dose,
+      given_at: null,
+      given_by_member_id: null,
+    });
   }
 
   async function takeOverDuty() {
     if (!me || !familyId || !currentParent) return;
     const until = new Date();
     until.setHours(until.getHours() + 24);
-    await supabase.from('on_duty').upsert(
-      {
-        parent_id: currentParent.id,
-        family_id: familyId,
-        member_id: me.id,
-        until: until.toISOString(),
-      },
-      { onConflict: 'parent_id' },
-    );
-    await load();
+    // on_duty is unique per parent_id — carry over the existing row's id if
+    // present so we update in place, otherwise mint a new one.
+    await writeRow('on_duty', {
+      id: onDuty?.id ?? newId(),
+      parent_id: currentParent.id,
+      family_id: familyId,
+      member_id: me.id,
+      until: until.toISOString(),
+    });
   }
 
   if (!currentParent) {
