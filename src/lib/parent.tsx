@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
+import { list } from '@/lib/db/repository';
+import { useDataVersion } from '@/lib/db/signal';
 import { useFamily } from '@/lib/family';
-import { supabase } from '@/lib/supabase';
 
 const CURRENT_PARENT_STORAGE_KEY = 'halmoni:currentParentId';
 
@@ -49,6 +50,7 @@ const ParentContext = createContext<ParentState>({
 
 export function ParentProvider({ children }: { children: ReactNode }) {
   const { familyId } = useFamily();
+  const dataVersion = useDataVersion();
   const [parents, setParents] = useState<ParentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentParentId, setCurrentParentIdState] = useState<string | null>(null);
@@ -71,18 +73,16 @@ export function ParentProvider({ children }: { children: ReactNode }) {
       return;
     }
     setLoading(true);
-    const { data } = await supabase
-      .from('parents')
-      .select('*')
-      .eq('family_id', familyId)
-      .order('created_at', { ascending: true });
-    setParents((data as ParentRow[] | null) ?? []);
+    const rows = (await list('parents', { family_id: familyId }, {
+      orderBy: 'created_at ASC',
+    })) as ParentRow[];
+    setParents(rows);
     setLoading(false);
   }, [familyId]);
 
   useEffect(() => {
     refresh();
-  }, [refresh]);
+  }, [refresh, dataVersion]);
 
   const currentParent = useMemo(() => {
     if (parents.length === 0) return null;

@@ -9,9 +9,12 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/field';
 import { Pill } from '@/components/ui/pill';
 import { Screen } from '@/components/ui/screen';
+import { getById, list } from '@/lib/db/repository';
+import { useDataVersion } from '@/lib/db/signal';
 import { formatDateShort, formatRelative } from '@/lib/format';
 import { useMe } from '@/lib/me';
-import { supabase } from '@/lib/supabase';
+import { newId } from '@/lib/newid';
+import { deleteRow, writeRow } from '@/lib/sync/write-path';
 import { palette, radius, spacing } from '@/lib/theme';
 
 type Med = {
@@ -48,6 +51,7 @@ type Symptom = {
 export default function MedicationDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { siblings } = useMe();
+  const dataVersion = useDataVersion();
   const [med, setMed] = useState<Med | null>(null);
   const [doses, setDoses] = useState<Dose[]>([]);
   const [symptoms, setSymptoms] = useState<Symptom[]>([]);
@@ -59,24 +63,30 @@ export default function MedicationDetailScreen() {
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
-    const [medRes, doseRes, sympRes] = await Promise.all([
-      supabase.from('medications').select('*').eq('id', id).maybeSingle(),
-      supabase
-        .from('med_doses')
-        .select('*')
-        .eq('medication_id', id)
-        .order('scheduled_at', { ascending: false })
-        .limit(20),
-      supabase
-        .from('symptoms')
-        .select('*')
-        .contains('possible_med_links', [id])
-        .order('observed_at', { ascending: false })
-        .limit(20),
+    const medRow = (await getById('medications', id)) as Med | null;
+    const [doseRows, allSymps] = await Promise.all([
+      list(
+        'med_doses',
+        { medication_id: id },
+        { orderBy: 'scheduled_at DESC', limit: 20 },
+      ) as Promise<Dose[]>,
+      // SQLite doesn't index into a JSON array, so scope by parent then filter
+      // in JS. Symptom volume per parent is small.
+      medRow
+        ? (list(
+            'symptoms',
+            { parent_id: medRow.parent_id },
+            { orderBy: 'observed_at DESC', limit: 100 },
+          ) as Promise<Symptom[]>)
+        : Promise.resolve<Symptom[]>([]),
     ]);
-    setMed((medRes.data as Med | null) ?? null);
-    setDoses((doseRes.data as Dose[] | null) ?? []);
-    setSymptoms((sympRes.data as Symptom[] | null) ?? []);
+    setMed(medRow);
+    setDoses(doseRows);
+    setSymptoms(
+      allSymps
+        .filter((s) => (s.possible_med_links ?? []).includes(id))
+        .slice(0, 20),
+    );
     setLoading(false);
   }, [id]);
 
@@ -84,24 +94,31 @@ export default function MedicationDetailScreen() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (dataVersion > 0) void load();
+  }, [dataVersion, load]);
+
   async function logSymptom() {
     if (!med || !logBody.trim()) return;
     setSaving(true);
-    const { error } = await supabase.from('symptoms').insert({
-      parent_id: med.parent_id,
-      family_id: med.family_id,
-      description: logBody.trim(),
-      severity,
-      observed_at: new Date().toISOString(),
-      possible_med_links: [med.id],
-    });
-    setSaving(false);
-    if (error) {
-      Alert.alert('Could not log', error.message);
-      return;
+    try {
+      const now = new Date().toISOString();
+      await writeRow('symptoms', {
+        id: newId(),
+        parent_id: med.parent_id,
+        family_id: med.family_id,
+        description: logBody.trim(),
+        severity,
+        observed_at: now,
+        possible_med_links: [med.id],
+        created_at: now,
+      });
+      setLogBody('');
+    } catch (err) {
+      Alert.alert('Could not log', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
     }
-    setLogBody('');
-    await load();
   }
 
   function confirmDelete() {
@@ -116,13 +133,17 @@ export default function MedicationDetailScreen() {
           style: 'destructive',
           onPress: async () => {
             setSaving(true);
-            const { error } = await supabase.from('medications').delete().eq('id', med.id);
-            setSaving(false);
-            if (error) {
-              Alert.alert('Could not delete', error.message);
-              return;
+            try {
+              await deleteRow('medications', med.id);
+              router.back();
+            } catch (err) {
+              Alert.alert(
+                'Could not delete',
+                err instanceof Error ? err.message : String(err),
+              );
+            } finally {
+              setSaving(false);
             }
-            router.back();
           },
         },
       ],

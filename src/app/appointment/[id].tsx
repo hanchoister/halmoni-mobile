@@ -7,8 +7,10 @@ import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Pill } from '@/components/ui/pill';
 import { Screen } from '@/components/ui/screen';
+import { getById, list } from '@/lib/db/repository';
+import { useDataVersion } from '@/lib/db/signal';
 import { formatDate, formatRelative, formatTime } from '@/lib/format';
-import { supabase } from '@/lib/supabase';
+import { deleteRow, writeRow } from '@/lib/sync/write-path';
 import { palette, spacing } from '@/lib/theme';
 
 type Appt = {
@@ -42,6 +44,7 @@ const kindLabel: Record<string, string> = {
 
 export default function AppointmentDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const dataVersion = useDataVersion();
   const [appt, setAppt] = useState<Appt | null>(null);
   const [notes, setNotes] = useState<VisitNote[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,22 +53,26 @@ export default function AppointmentDetailScreen() {
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
-    const [apptRes, notesRes] = await Promise.all([
-      supabase.from('appointments').select('*').eq('id', id).maybeSingle(),
-      supabase
-        .from('visit_notes')
-        .select('*')
-        .eq('appointment_id', id)
-        .order('captured_at', { ascending: true }),
+    const [apptRow, noteRows] = await Promise.all([
+      getById('appointments', id) as Promise<Appt | null>,
+      list(
+        'visit_notes',
+        { appointment_id: id },
+        { orderBy: 'captured_at ASC' },
+      ) as Promise<VisitNote[]>,
     ]);
-    setAppt((apptRes.data as Appt | null) ?? null);
-    setNotes((notesRes.data as VisitNote[] | null) ?? []);
+    setAppt(apptRow);
+    setNotes(noteRows);
     setLoading(false);
   }, [id]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (dataVersion > 0) void load();
+  }, [dataVersion, load]);
 
   function confirmDelete() {
     if (!appt) return;
@@ -79,13 +86,17 @@ export default function AppointmentDetailScreen() {
           style: 'destructive',
           onPress: async () => {
             setBusy(true);
-            const { error } = await supabase.from('appointments').delete().eq('id', appt.id);
-            setBusy(false);
-            if (error) {
-              Alert.alert('Could not delete', error.message);
-              return;
+            try {
+              await deleteRow('appointments', appt.id);
+              router.back();
+            } catch (err) {
+              Alert.alert(
+                'Could not delete',
+                err instanceof Error ? err.message : String(err),
+              );
+            } finally {
+              setBusy(false);
             }
-            router.back();
           },
         },
       ],
@@ -95,16 +106,13 @@ export default function AppointmentDetailScreen() {
   async function markCompleted() {
     if (!appt) return;
     setBusy(true);
-    const { error } = await supabase
-      .from('appointments')
-      .update({ status: 'completed' })
-      .eq('id', appt.id);
-    setBusy(false);
-    if (error) {
-      Alert.alert('Could not update', error.message);
-      return;
+    try {
+      await writeRow('appointments', { ...appt, status: 'completed' });
+    } catch (err) {
+      Alert.alert('Could not update', err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
     }
-    await load();
   }
 
   if (loading) {

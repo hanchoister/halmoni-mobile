@@ -7,13 +7,12 @@ import { ChipInput } from '@/components/ui/chip-input';
 import { Field, Input } from '@/components/ui/field';
 import { Screen } from '@/components/ui/screen';
 import { useFamily } from '@/lib/family';
-import { useParents } from '@/lib/parent';
-import { supabase } from '@/lib/supabase';
+import { newId } from '@/lib/newid';
+import { writeRow } from '@/lib/sync/write-path';
 import { palette, spacing } from '@/lib/theme';
 
 export default function AddParentScreen() {
   const { familyId } = useFamily();
-  const { refresh } = useParents();
   const [name, setName] = useState('');
   const [nickname, setNickname] = useState('');
   const [dob, setDob] = useState('');
@@ -30,24 +29,26 @@ export default function AddParentScreen() {
       return;
     }
     setSaving(true);
-    const { error } = await supabase.from('parents').insert({
-      family_id: familyId,
-      name: name.trim(),
-      nickname: nickname.trim() || name.trim(),
-      dob: dob.trim() || null,
-      blood_type: bloodType.trim() || null,
-      conditions,
-      allergies,
-      preferences: preferences.trim() || null,
-      ice_contacts: [],
-    });
-    setSaving(false);
-    if (error) {
-      Alert.alert('Could not save', error.message);
-      return;
+    try {
+      await writeRow('parents', {
+        id: newId(),
+        family_id: familyId,
+        name: name.trim(),
+        nickname: nickname.trim() || name.trim(),
+        dob: dob.trim() || null,
+        blood_type: bloodType.trim() || null,
+        conditions,
+        allergies,
+        preferences: preferences.trim() || null,
+        ice_contacts: [],
+        created_at: new Date().toISOString(),
+      });
+      router.back();
+    } catch (err) {
+      Alert.alert('Could not save', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
     }
-    await refresh();
-    router.back();
   }
 
   return (

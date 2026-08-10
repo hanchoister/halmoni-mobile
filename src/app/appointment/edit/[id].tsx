@@ -5,7 +5,8 @@ import { Alert, StyleSheet, Text, View } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
 import { Screen } from '@/components/ui/screen';
-import { supabase } from '@/lib/supabase';
+import { getById } from '@/lib/db/repository';
+import { writeRow } from '@/lib/sync/write-path';
 import { palette, spacing } from '@/lib/theme';
 
 function pad(n: number) {
@@ -14,6 +15,7 @@ function pad(n: number) {
 
 export default function EditAppointmentScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const [row, setRow] = useState<Record<string, any> | null>(null);
   const [providerName, setProviderName] = useState('');
   const [specialty, setSpecialty] = useState('');
   const [location, setLocation] = useState('');
@@ -27,16 +29,13 @@ export default function EditAppointmentScreen() {
   useEffect(() => {
     (async () => {
       if (!id) return;
-      const { data, error } = await supabase
-        .from('appointments')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
-      if (error || !data) {
-        Alert.alert('Could not load appointment', error?.message ?? 'Not found.');
+      const data = await getById('appointments', id);
+      if (!data) {
+        Alert.alert('Could not load appointment', 'Not found.');
         setLoading(false);
         return;
       }
+      setRow(data);
       setProviderName(data.provider_name ?? '');
       setSpecialty(data.specialty ?? '');
       setLocation(data.location ?? '');
@@ -50,7 +49,7 @@ export default function EditAppointmentScreen() {
   }, [id]);
 
   async function save() {
-    if (!id || !providerName.trim() || !date.trim()) return;
+    if (!id || !row || !providerName.trim() || !date.trim()) return;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
       Alert.alert('Bad date', 'Use YYYY-MM-DD.');
       return;
@@ -66,23 +65,22 @@ export default function EditAppointmentScreen() {
       return;
     }
     setSaving(true);
-    const { error } = await supabase
-      .from('appointments')
-      .update({
+    try {
+      await writeRow('appointments', {
+        ...row,
         provider_name: providerName.trim(),
         specialty: specialty.trim() || null,
         location: location.trim() || null,
         starts_at: parsed.toISOString(),
         duration_min: Number(durationMin) || 30,
         prep_notes: prepNotes.trim() || null,
-      })
-      .eq('id', id);
-    setSaving(false);
-    if (error) {
-      Alert.alert('Could not save', error.message);
-      return;
+      });
+      router.back();
+    } catch (err) {
+      Alert.alert('Could not save', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
     }
-    router.back();
   }
 
   if (loading) {

@@ -8,10 +8,13 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/field';
 import { Pill } from '@/components/ui/pill';
 import { Screen } from '@/components/ui/screen';
+import { getById, list } from '@/lib/db/repository';
+import { useDataVersion } from '@/lib/db/signal';
 import { formatDate, formatTime } from '@/lib/format';
 import { useMe } from '@/lib/me';
+import { newId } from '@/lib/newid';
 import { useParents } from '@/lib/parent';
-import { supabase } from '@/lib/supabase';
+import { writeRow } from '@/lib/sync/write-path';
 import { palette, radius, spacing } from '@/lib/theme';
 
 type Tab = 'prep' | 'visit' | 'summary';
@@ -76,26 +79,25 @@ export default function VisitMode() {
   const [noteBody, setNoteBody] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const dataVersion = useDataVersion();
 
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
-    const [apptRes, notesRes] = await Promise.all([
-      supabase.from('appointments').select('*').eq('id', id).maybeSingle(),
-      supabase
-        .from('visit_notes')
-        .select('*')
-        .eq('appointment_id', id)
-        .order('captured_at', { ascending: true }),
+    const [apptRow, noteRows] = await Promise.all([
+      getById('appointments', id) as Promise<Appt | null>,
+      list(
+        'visit_notes',
+        { appointment_id: id },
+        { orderBy: 'captured_at ASC' },
+      ) as Promise<VisitNote[]>,
     ]);
-    const a = apptRes.data as Appt | null;
-    const loadedNotes = (notesRes.data as VisitNote[] | null) ?? [];
-    setAppt(a);
-    setNotes(loadedNotes);
-    if (a) {
-      setPrepDraft(a.prep_notes ?? '');
-      setSummaryDraft(a.summary ?? buildSummaryFromNotes(loadedNotes));
-      if (a.status === 'completed') setTab('summary');
+    setAppt(apptRow);
+    setNotes(noteRows);
+    if (apptRow) {
+      setPrepDraft(apptRow.prep_notes ?? '');
+      setSummaryDraft(apptRow.summary ?? buildSummaryFromNotes(noteRows));
+      if (apptRow.status === 'completed') setTab('summary');
     }
     setLoading(false);
   }, [id]);
@@ -103,6 +105,10 @@ export default function VisitMode() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (dataVersion > 0) void load();
+  }, [dataVersion, load]);
 
   if (loading) {
     return (
@@ -123,28 +129,34 @@ export default function VisitMode() {
   async function savePrep() {
     if (!appt) return;
     setBusy(true);
-    await supabase.from('appointments').update({ prep_notes: prepDraft }).eq('id', appt.id);
-    setBusy(false);
+    try {
+      await writeRow('appointments', { ...appt, prep_notes: prepDraft });
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function addNote() {
     if (!appt || !noteBody.trim()) return;
     setBusy(true);
-    const { error } = await supabase.from('visit_notes').insert({
-      appointment_id: appt.id,
-      family_id: appt.family_id,
-      kind: noteKind,
-      body: noteBody.trim(),
-      captured_at: new Date().toISOString(),
-    });
-    setBusy(false);
-    if (error) {
-      Alert.alert('Could not save', error.message);
-      return;
+    try {
+      const now = new Date().toISOString();
+      await writeRow('visit_notes', {
+        id: newId(),
+        appointment_id: appt.id,
+        family_id: appt.family_id,
+        kind: noteKind,
+        body: noteBody.trim(),
+        captured_at: now,
+        created_at: now,
+      });
+      setNoteBody('');
+      setNoteKind('other');
+    } catch (err) {
+      Alert.alert('Could not save', err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
     }
-    setNoteBody('');
-    setNoteKind('other');
-    await load();
   }
 
   const autoSummary = buildSummaryFromNotes(notes);
@@ -162,15 +174,17 @@ export default function VisitMode() {
   async function saveSummary(): Promise<string | null> {
     if (!appt || !currentParent) return null;
     const text = summaryDraft.trim() || autoSummary;
-    const { error } = await supabase
-      .from('appointments')
-      .update({ summary: text, status: 'completed' })
-      .eq('id', appt.id);
-    if (error) {
-      Alert.alert('Could not save', error.message);
+    try {
+      await writeRow('appointments', {
+        ...appt,
+        summary: text,
+        status: 'completed',
+      });
+      return text;
+    } catch (err) {
+      Alert.alert('Could not save', err instanceof Error ? err.message : String(err));
       return null;
     }
-    return text;
   }
 
   async function finalize() {
@@ -178,11 +192,15 @@ export default function VisitMode() {
     setBusy(true);
     const text = await saveSummary();
     if (text) {
-      await supabase.from('thread_messages').insert({
+      const now = new Date().toISOString();
+      await writeRow('thread_messages', {
+        id: newId(),
         family_id: appt.family_id,
         parent_id: appt.parent_id,
         body: `Visit summary — ${appt.provider_name}: ${text}`,
         author_member_id: me?.id ?? null,
+        is_digest: false,
+        created_at: now,
       });
     }
     setBusy(false);

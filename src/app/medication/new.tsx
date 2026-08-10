@@ -5,8 +5,9 @@ import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
 import { Screen } from '@/components/ui/screen';
+import { newId } from '@/lib/newid';
 import { useParents } from '@/lib/parent';
-import { supabase } from '@/lib/supabase';
+import { writeRow, writeRows } from '@/lib/sync/write-path';
 import { palette, radius, spacing } from '@/lib/theme';
 
 export default function AddMedicationScreen() {
@@ -38,10 +39,16 @@ export default function AddMedicationScreen() {
     setTimeInput('');
   }
 
-  function buildDoseRows(medId: string, familyId: string, schedule: { time: string }[]) {
+  function buildDoseRows(
+    medId: string,
+    familyId: string,
+    parentId: string,
+    schedule: { time: string }[],
+  ) {
     const rows: Record<string, unknown>[] = [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const nowIso = new Date().toISOString();
     for (let dayOffset = 0; dayOffset < 90; dayOffset++) {
       const day = new Date(today);
       day.setDate(today.getDate() + dayOffset);
@@ -50,13 +57,15 @@ export default function AddMedicationScreen() {
         const sched = new Date(day);
         sched.setHours(h, m, 0, 0);
         rows.push({
+          id: newId(),
           family_id: familyId,
           medication_id: medId,
+          parent_id: parentId,
           scheduled_at: sched.toISOString(),
           given_at: null,
           given_by_member_id: null,
           skipped: false,
-          skip_reason: null,
+          created_at: nowIso,
         });
       }
     }
@@ -70,11 +79,13 @@ export default function AddMedicationScreen() {
       return;
     }
     setSaving(true);
-    const schedule = times.map((t) => ({ time: t, withFood: withFood || undefined }));
-    const today = new Date().toISOString().slice(0, 10);
-    const { data: med, error } = await supabase
-      .from('medications')
-      .insert({
+    try {
+      const schedule = times.map((t) => ({ time: t, withFood: withFood || undefined }));
+      const today = new Date().toISOString().slice(0, 10);
+      const nowIso = new Date().toISOString();
+      const medId = newId();
+      await writeRow('medications', {
+        id: medId,
         parent_id: currentParent.id,
         family_id: currentParent.family_id,
         name: name.trim(),
@@ -87,22 +98,21 @@ export default function AddMedicationScreen() {
         pills_left: pillsLeft ? parseInt(pillsLeft, 10) : null,
         notes: notes.trim() || null,
         started_at: today,
-      })
-      .select('id')
-      .single();
-    if (error || !med) {
+        created_at: nowIso,
+      });
+      const doseRows = buildDoseRows(
+        medId,
+        currentParent.family_id,
+        currentParent.id,
+        schedule,
+      );
+      await writeRows('med_doses', doseRows);
+      router.back();
+    } catch (err) {
+      Alert.alert('Could not save', err instanceof Error ? err.message : String(err));
+    } finally {
       setSaving(false);
-      Alert.alert('Could not save', error?.message ?? 'Unknown error.');
-      return;
     }
-    const doseRows = buildDoseRows(med.id as string, currentParent.family_id, schedule);
-    const { error: doseErr } = await supabase.from('med_doses').insert(doseRows);
-    setSaving(false);
-    if (doseErr) {
-      Alert.alert('Saved med, but doses failed', doseErr.message);
-      return;
-    }
-    router.back();
   }
 
   return (

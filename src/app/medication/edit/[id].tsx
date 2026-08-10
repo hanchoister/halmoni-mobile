@@ -5,13 +5,15 @@ import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
 import { Screen } from '@/components/ui/screen';
-import { supabase } from '@/lib/supabase';
+import { getById } from '@/lib/db/repository';
+import { writeRow } from '@/lib/sync/write-path';
 import { palette, radius, spacing } from '@/lib/theme';
 
 type Schedule = { time: string; withFood?: boolean };
 
 export default function EditMedicationScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const [row, setRow] = useState<Record<string, any> | null>(null);
   const [name, setName] = useState('');
   const [dose, setDose] = useState('');
   const [purpose, setPurpose] = useState('');
@@ -29,16 +31,13 @@ export default function EditMedicationScreen() {
   useEffect(() => {
     (async () => {
       if (!id) return;
-      const { data, error } = await supabase
-        .from('medications')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
-      if (error || !data) {
-        Alert.alert('Could not load medication', error?.message ?? 'Not found.');
+      const data = await getById('medications', id);
+      if (!data) {
+        Alert.alert('Could not load medication', 'Not found.');
         setLoading(false);
         return;
       }
+      setRow(data);
       setName(data.name ?? '');
       setDose(data.dose ?? '');
       setPurpose(data.purpose ?? '');
@@ -69,16 +68,16 @@ export default function EditMedicationScreen() {
   }
 
   async function save() {
-    if (!id || !name.trim() || times.length === 0) return;
+    if (!id || !row || !name.trim() || times.length === 0) return;
     if (refillBy.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(refillBy.trim())) {
       Alert.alert('Bad refill date', 'Use YYYY-MM-DD or leave blank.');
       return;
     }
     setSaving(true);
-    const schedule = times.map((t) => ({ time: t, withFood: withFood || undefined }));
-    const { error } = await supabase
-      .from('medications')
-      .update({
+    try {
+      const schedule = times.map((t) => ({ time: t, withFood: withFood || undefined }));
+      await writeRow('medications', {
+        ...row,
         name: name.trim(),
         dose: dose.trim() || null,
         purpose: purpose.trim() || null,
@@ -88,14 +87,13 @@ export default function EditMedicationScreen() {
         refill_by: refillBy.trim() || null,
         pills_left: pillsLeft ? parseInt(pillsLeft, 10) : null,
         notes: notes.trim() || null,
-      })
-      .eq('id', id);
-    setSaving(false);
-    if (error) {
-      Alert.alert('Could not save', error.message);
-      return;
+      });
+      router.back();
+    } catch (err) {
+      Alert.alert('Could not save', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
     }
-    router.back();
   }
 
   if (loading) {

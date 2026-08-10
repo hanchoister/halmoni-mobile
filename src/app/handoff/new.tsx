@@ -8,9 +8,11 @@ import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Field, Input } from '@/components/ui/field';
 import { Screen } from '@/components/ui/screen';
+import { list } from '@/lib/db/repository';
 import { useMe } from '@/lib/me';
+import { newId } from '@/lib/newid';
 import { useParents } from '@/lib/parent';
-import { supabase } from '@/lib/supabase';
+import { writeRow } from '@/lib/sync/write-path';
 import { palette, radius, spacing } from '@/lib/theme';
 
 const DURATIONS = [
@@ -55,32 +57,37 @@ export default function HandoffScreen() {
   async function send() {
     if (!toId || !summary.trim() || !currentParent || !me) return;
     setSaving(true);
-    const until = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
-    const { error: handoffErr } = await supabase.from('handoffs').insert({
-      family_id: currentParent.family_id,
-      parent_id: currentParent.id,
-      from_member_id: me.id,
-      to_member_id: toId,
-      summary: summary.trim(),
-      personal_message: personalMessage.trim() || null,
-      until,
-    });
-    if (handoffErr) {
-      setSaving(false);
-      Alert.alert('Could not hand off', handoffErr.message);
-      return;
-    }
-    await supabase.from('on_duty').upsert(
-      {
+    try {
+      const nowIso = new Date().toISOString();
+      const until = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+      await writeRow('handoffs', {
+        id: newId(),
+        family_id: currentParent.family_id,
+        parent_id: currentParent.id,
+        from_member_id: me.id,
+        to_member_id: toId,
+        summary: summary.trim(),
+        personal_message: personalMessage.trim() || null,
+        sent_at: nowIso,
+        until,
+        created_at: nowIso,
+      });
+      const existing = await list('on_duty', { parent_id: currentParent.id }, { limit: 1 });
+      const dutyId = (existing[0]?.id as string | undefined) ?? newId();
+      await writeRow('on_duty', {
+        id: dutyId,
         parent_id: currentParent.id,
         family_id: currentParent.family_id,
         member_id: toId,
         until,
-      },
-      { onConflict: 'parent_id' },
-    );
-    setSaving(false);
-    router.back();
+        created_at: existing[0]?.created_at ?? nowIso,
+      });
+      router.back();
+    } catch (err) {
+      Alert.alert('Could not hand off', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (

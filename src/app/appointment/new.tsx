@@ -5,8 +5,9 @@ import { Alert, StyleSheet, Text, View } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
 import { Screen } from '@/components/ui/screen';
+import { newId } from '@/lib/newid';
 import { useParents } from '@/lib/parent';
-import { supabase } from '@/lib/supabase';
+import { writeRow } from '@/lib/sync/write-path';
 import { palette, spacing } from '@/lib/theme';
 
 export default function AddAppointmentScreen() {
@@ -37,24 +38,27 @@ export default function AddAppointmentScreen() {
       return;
     }
     setSaving(true);
-    const startsAt = parsed.toISOString();
-    const { error } = await supabase.from('appointments').insert({
-      parent_id: currentParent.id,
-      family_id: currentParent.family_id,
-      provider_name: providerName.trim(),
-      specialty: specialty.trim() || null,
-      location: location.trim() || null,
-      starts_at: startsAt,
-      duration_min: Number(durationMin) || 30,
-      status: 'upcoming',
-      prep_notes: prepNotes.trim() || null,
-    });
-    setSaving(false);
-    if (error) {
-      Alert.alert('Could not save', error.message);
-      return;
+    try {
+      const startsAt = parsed.toISOString();
+      await writeRow('appointments', {
+        id: newId(),
+        parent_id: currentParent.id,
+        family_id: currentParent.family_id,
+        provider_name: providerName.trim(),
+        specialty: specialty.trim() || null,
+        location: location.trim() || null,
+        starts_at: startsAt,
+        duration_min: Number(durationMin) || 30,
+        status: 'upcoming',
+        prep_notes: prepNotes.trim() || null,
+        created_at: new Date().toISOString(),
+      });
+      router.back();
+    } catch (err) {
+      Alert.alert('Could not save', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
     }
-    router.back();
   }
 
   return (

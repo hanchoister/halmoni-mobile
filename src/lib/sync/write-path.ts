@@ -4,6 +4,7 @@
 // Screens can migrate to these helpers incrementally — call sites still using
 // supabase.from() directly continue to work, they just skip the offline layer.
 
+import { getDb } from '@/lib/db/client';
 import { enqueueWrite, softDelete, upsertRow } from '@/lib/db/repository';
 import type { SyncableTable } from '@/lib/db/schema';
 import { bumpDataVersion } from '@/lib/db/signal';
@@ -39,6 +40,29 @@ export async function writeRow(
     await enqueueWrite(table, 'update', stamped);
     nudge();
   }
+  bumpDataVersion();
+}
+
+/**
+ * Batched writeRow — a single SQLite transaction covers every upsert +
+ * enqueue. Use this for bulk inserts (e.g. 90 days of medication doses)
+ * so we don't fsync per row.
+ */
+export async function writeRows(
+  table: SyncableTable,
+  rows: Record<string, any>[],
+): Promise<void> {
+  if (rows.length === 0) return;
+  const stamped = rows.map(stampWrite);
+  const db = await getDb();
+  const demo = isDemoMode();
+  await db.withTransactionAsync(async () => {
+    for (const r of stamped) await upsertRow(table, r);
+    if (!demo) {
+      for (const r of stamped) await enqueueWrite(table, 'update', r);
+    }
+  });
+  if (!demo) nudge();
   bumpDataVersion();
 }
 
