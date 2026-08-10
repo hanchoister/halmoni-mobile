@@ -23,6 +23,7 @@ import { FamilyProvider, useFamily } from '@/lib/family';
 import { MeProvider, useMe } from '@/lib/me';
 import { ParentProvider } from '@/lib/parent';
 import { beatPresence } from '@/lib/presence';
+import { ErrorBoundary } from '@/lib/reliability/error-boundary';
 import { SyncProvider } from '@/lib/sync';
 import { startRealtime, stopRealtime } from '@/lib/sync/realtime';
 import { palette } from '@/lib/theme';
@@ -159,8 +160,10 @@ export default function RootLayout() {
   });
   if (!fontsLoaded) return <Spinner />;
   return (
-    <AuthProvider>
-      <RootNavigator />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <RootNavigator />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

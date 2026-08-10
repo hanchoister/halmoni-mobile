@@ -22,6 +22,7 @@ import {
   upsertRows,
 } from '@/lib/db/repository';
 import type { SyncableTable } from '@/lib/db/schema';
+import { withRetry } from '@/lib/reliability/retry';
 
 const PULL_BATCH_LIMIT = 500;
 
@@ -59,7 +60,9 @@ async function pushOnce(): Promise<number> {
   let pushedCount = 0;
   for (const [table, writes] of byTable) {
     const rows = writes.map((w) => JSON.parse(w.payload));
-    const { error } = await supabase.from(table).upsert(rows, { onConflict: 'id' });
+    const { error } = await withRetry(async () =>
+      await supabase.from(table).upsert(rows, { onConflict: 'id' }),
+    );
     if (error) {
       for (const w of writes) await markWriteAttempted(w.id, error.message);
       throw new Error(`push failed for ${table}: ${error.message}`);
@@ -83,12 +86,14 @@ async function pullOnce(): Promise<Partial<Record<SyncableTable, number>>> {
     // No deleted_at filter — we want tombstones so the local mirror can mark
     // them as deleted (repository.list() already filters deleted rows out of
     // UI reads).
-    const { data, error } = await supabase
-      .from(table)
-      .select('*')
-      .gt('updated_at', last)
-      .order('updated_at', { ascending: true })
-      .limit(PULL_BATCH_LIMIT);
+    const { data, error } = await withRetry(async () =>
+      await supabase
+        .from(table)
+        .select('*')
+        .gt('updated_at', last)
+        .order('updated_at', { ascending: true })
+        .limit(PULL_BATCH_LIMIT),
+    );
 
     if (error) throw new Error(`pull failed for ${table}: ${error.message}`);
     if (!data || data.length === 0) continue;
