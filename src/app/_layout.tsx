@@ -11,7 +11,7 @@ import {
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, AppState, View } from 'react-native';
 
 import { LoginScreen } from '@/components/login-screen';
 import { OnboardingScreen } from '@/components/onboarding-screen';
@@ -20,9 +20,11 @@ import { WelcomeScreen } from '@/components/welcome-screen';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { enableDemoMode, isDemoMode, useDemoMode } from '@/lib/demo-mode';
 import { FamilyProvider, useFamily } from '@/lib/family';
-import { MeProvider } from '@/lib/me';
+import { MeProvider, useMe } from '@/lib/me';
 import { ParentProvider } from '@/lib/parent';
+import { beatPresence } from '@/lib/presence';
 import { SyncProvider } from '@/lib/sync';
+import { startRealtime, stopRealtime } from '@/lib/sync/realtime';
 import { palette } from '@/lib/theme';
 
 // Sync targets real Supabase; skip it in demo mode (in-memory backend).
@@ -74,13 +76,44 @@ function AppStack() {
   );
 }
 
+// Beats presence once on mount, on foreground, and every 60s while active.
+// Lives inside MeProvider so `me.id` is available; no-op in demo mode.
+function PresenceHeartbeat() {
+  const { me } = useMe();
+  const { familyId } = useFamily();
+  useEffect(() => {
+    if (!me || !familyId || isDemoMode()) return;
+    void beatPresence(me.id, familyId);
+    const interval = setInterval(() => {
+      void beatPresence(me.id, familyId);
+    }, 60_000);
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') void beatPresence(me.id, familyId);
+    });
+    return () => {
+      clearInterval(interval);
+      sub.remove();
+    };
+  }, [me, familyId]);
+  return null;
+}
+
 function FamilyGate() {
   const { familyId, loading } = useFamily();
+
+  // Realtime channel follows the current family — skip in demo mode.
+  useEffect(() => {
+    if (!familyId || isDemoMode()) return;
+    startRealtime(familyId);
+    return () => stopRealtime();
+  }, [familyId]);
+
   if (loading) return <Spinner />;
   if (!familyId) return <OnboardingScreen />;
   return (
     <ParentProvider>
       <MeProvider>
+        <PresenceHeartbeat />
         <AppStack />
       </MeProvider>
     </ParentProvider>
