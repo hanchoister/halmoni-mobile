@@ -1,15 +1,19 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Screen } from '@/components/ui/screen';
+import { list } from '@/lib/db/repository';
+import { useDataVersion } from '@/lib/db/signal';
+import { analyzeSymptoms } from '@/lib/detective';
+import { loadDismissedPairs } from '@/lib/detective-dismissals';
+import { useFamily } from '@/lib/family';
 import { formatDateShort } from '@/lib/format';
 import { useParents } from '@/lib/parent';
-import { supabase } from '@/lib/supabase';
-import { palette, spacing } from '@/lib/theme';
+import { palette, radius, spacing } from '@/lib/theme';
 
 type MedRow = {
   id: string;
@@ -19,33 +23,63 @@ type MedRow = {
   schedule: { time: string; withFood?: boolean }[];
   refill_by: string | null;
   pills_left: number | null;
+  started_at: string | null;
+};
+
+type SymptomRow = {
+  id: string;
+  description: string;
+  observed_at: string;
+  possible_med_links: string[] | null;
 };
 
 export default function MedsScreen() {
+  const { familyId } = useFamily();
   const { currentParent } = useParents();
+  const dataVersion = useDataVersion();
   const [meds, setMeds] = useState<MedRow[]>([]);
+  const [patternCount, setPatternCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    if (!currentParent) {
+    if (!familyId || !currentParent) {
       setLoading(false);
       return;
     }
     setLoading(true);
-    const { data } = await supabase
-      .from('medications')
-      .select('*')
-      .eq('parent_id', currentParent.id)
-      .order('name', { ascending: true });
-    setMeds((data as MedRow[] | null) ?? []);
+    const since = new Date();
+    since.setDate(since.getDate() - 60);
+    const [rows, symptomRows, dismissed] = await Promise.all([
+      list(
+        'medications',
+        { parent_id: currentParent.id },
+        { orderBy: 'name ASC' },
+      ) as Promise<MedRow[]>,
+      list(
+        'symptoms',
+        { parent_id: currentParent.id },
+        {
+          gte: { observed_at: since.toISOString() },
+          orderBy: 'observed_at DESC',
+          limit: 100,
+        },
+      ) as Promise<SymptomRow[]>,
+      loadDismissedPairs(familyId),
+    ]);
+    setMeds(rows);
+    setPatternCount(analyzeSymptoms(rows, symptomRows, dismissed).length);
     setLoading(false);
-  }, [currentParent]);
+  }, [familyId, currentParent]);
 
   useFocusEffect(
     useCallback(() => {
       load();
     }, [load]),
   );
+
+  useEffect(() => {
+    if (dataVersion > 0) void load();
+  }, [dataVersion, load]);
 
   if (!currentParent) {
     return (
@@ -68,6 +102,20 @@ export default function MedsScreen() {
     <Screen
       refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}>
       <Button title="+ Add medication" onPress={() => router.push('/medication/new')} />
+
+      {patternCount > 0 && (
+        <Pressable onPress={() => router.push('/patterns')} style={styles.detectiveBanner}>
+          <Text style={styles.detectiveEmoji}>🔎</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.detectiveTitle}>
+              {patternCount === 1
+                ? '1 possible side-effect pattern'
+                : `${patternCount} possible side-effect patterns`}
+            </Text>
+            <Text style={styles.detectiveSub}>Review timing overlaps with symptoms →</Text>
+          </View>
+        </Pressable>
+      )}
 
       {meds.length === 0 ? (
         <EmptyState
@@ -127,4 +175,17 @@ const styles = StyleSheet.create({
   schedule: { fontSize: 12, color: palette.sage700, marginTop: 6, fontWeight: '600' },
   refill: { fontSize: 11, color: palette.ink500, marginTop: 4 },
   refillSoon: { color: palette.terracotta700, fontWeight: '700' },
+  detectiveBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: palette.sage500,
+    backgroundColor: palette.sage50,
+  },
+  detectiveEmoji: { fontSize: 22 },
+  detectiveTitle: { fontSize: 14, fontWeight: '700', color: palette.ink900 },
+  detectiveSub: { fontSize: 12, color: palette.ink500, marginTop: 2 },
 });

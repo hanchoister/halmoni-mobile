@@ -50,6 +50,7 @@ export function HeadsUp({
   handoffs,
   siblings,
   meId,
+  dismissedFindings,
   onAcceptHandoff,
 }: {
   meds: Med[];
@@ -57,10 +58,22 @@ export function HeadsUp({
   handoffs: Handoff[];
   siblings: Sibling[];
   meId: string | null;
+  dismissedFindings?: Set<string>;
   onAcceptHandoff: (handoffId: string) => Promise<void>;
 }) {
   const nowIso = new Date().toISOString();
+
+  // Urgent findings lead everything else — safety first, before handoffs and refills.
+  const findings = analyzeSymptoms(meds, symptoms, dismissedFindings);
+  const urgentFindings = findings.filter((f) => f.tier === 'urgent');
+  const highFindings = findings.filter((f) => f.tier === 'high');
+  const lowFindings = findings.filter((f) => f.tier === 'low');
+
   const items: Item[] = [];
+
+  urgentFindings.forEach((f) => {
+    items.push({ key: `find-${f.medId}`, kind: 'finding', finding: f });
+  });
 
   handoffs
     .filter((h) => h.to_member_id === meId && !h.accepted_at)
@@ -89,13 +102,7 @@ export function HeadsUp({
     }
   });
 
-  const findings = analyzeSymptoms(meds, symptoms);
-  const urgentFindings = findings.filter((f) => f.tier === 'urgent');
-  const highFindings = findings.filter((f) => f.tier === 'high');
-  const lowFindings = findings.filter((f) => f.tier === 'low');
-
-  const rankedFindings = [...urgentFindings, ...highFindings];
-  rankedFindings.forEach((f) => {
+  highFindings.forEach((f) => {
     items.push({ key: `find-${f.medId}`, kind: 'finding', finding: f });
   });
 
@@ -157,7 +164,9 @@ export function HeadsUp({
               key={it.key}
               tint="warm"
               style={isUrgent ? { borderColor: palette.terracotta600, borderWidth: 2 } : undefined}>
-              <View style={styles.row}>
+              <Pressable
+                onPress={() => router.push(`/medication/${f.medId}`)}
+                style={styles.row}>
                 <Text style={styles.emoji}>{emoji}</Text>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.title}>{title}</Text>
@@ -175,7 +184,7 @@ export function HeadsUp({
                     <Text style={styles.hint}>· +{f.symptoms.length - 3} more</Text>
                   )}
                 </View>
-              </View>
+              </Pressable>
             </Card>
           );
         }

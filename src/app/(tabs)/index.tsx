@@ -11,6 +11,7 @@ import { Pill } from '@/components/ui/pill';
 import { Screen } from '@/components/ui/screen';
 import { list } from '@/lib/db/repository';
 import { useDataVersion } from '@/lib/db/signal';
+import { loadDismissedPairs } from '@/lib/detective-dismissals';
 import { useFamily } from '@/lib/family';
 import { calcAge, formatRelative, formatTime, isSameDay } from '@/lib/format';
 import { useMe } from '@/lib/me';
@@ -81,6 +82,7 @@ export default function TodayScreen() {
   const [onDuty, setOnDuty] = useState<OnDutyRow | null>(null);
   const [symptoms, setSymptoms] = useState<SymptomRow[]>([]);
   const [handoffs, setHandoffs] = useState<HandoffRow[]>([]);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -100,45 +102,53 @@ export default function TodayScreen() {
 
     const nowIso = new Date().toISOString();
 
-    const [medsList, todaysDoses, upcomingAppts, dutyRows, sympRows, allHandoffs] =
-      await Promise.all([
-        list('medications', { parent_id: currentParent.id }) as Promise<MedRow[]>,
-        list(
-          'med_doses',
-          { family_id: familyId },
-          {
-            gte: { scheduled_at: from.toISOString() },
-            lte: { scheduled_at: to.toISOString() },
-            orderBy: 'scheduled_at ASC',
-          },
-        ) as Promise<DoseRow[]>,
-        list(
-          'appointments',
-          { parent_id: currentParent.id, status: 'upcoming' },
-          {
-            gte: { starts_at: nowIso },
-            orderBy: 'starts_at ASC',
-            limit: 1,
-          },
-        ) as Promise<AppointmentRow[]>,
-        list('on_duty', { parent_id: currentParent.id }, { limit: 1 }) as Promise<
-          OnDutyRow[]
-        >,
-        list(
-          'symptoms',
-          { parent_id: currentParent.id },
-          {
-            gte: { observed_at: since.toISOString() },
-            orderBy: 'observed_at DESC',
-            limit: 30,
-          },
-        ) as Promise<SymptomRow[]>,
-        list(
-          'handoffs',
-          { parent_id: currentParent.id },
-          { isNull: ['accepted_at'], orderBy: 'sent_at DESC' },
-        ) as Promise<HandoffRow[]>,
-      ]);
+    const [
+      medsList,
+      todaysDoses,
+      upcomingAppts,
+      dutyRows,
+      sympRows,
+      allHandoffs,
+      dismissedPairs,
+    ] = await Promise.all([
+      list('medications', { parent_id: currentParent.id }) as Promise<MedRow[]>,
+      list(
+        'med_doses',
+        { family_id: familyId },
+        {
+          gte: { scheduled_at: from.toISOString() },
+          lte: { scheduled_at: to.toISOString() },
+          orderBy: 'scheduled_at ASC',
+        },
+      ) as Promise<DoseRow[]>,
+      list(
+        'appointments',
+        { parent_id: currentParent.id, status: 'upcoming' },
+        {
+          gte: { starts_at: nowIso },
+          orderBy: 'starts_at ASC',
+          limit: 1,
+        },
+      ) as Promise<AppointmentRow[]>,
+      list('on_duty', { parent_id: currentParent.id }, { limit: 1 }) as Promise<
+        OnDutyRow[]
+      >,
+      list(
+        'symptoms',
+        { parent_id: currentParent.id },
+        {
+          gte: { observed_at: since.toISOString() },
+          orderBy: 'observed_at DESC',
+          limit: 30,
+        },
+      ) as Promise<SymptomRow[]>,
+      list(
+        'handoffs',
+        { parent_id: currentParent.id },
+        { isNull: ['accepted_at'], orderBy: 'sent_at DESC' },
+      ) as Promise<HandoffRow[]>,
+      loadDismissedPairs(familyId),
+    ]);
 
     const medIds = new Set(medsList.map((m) => m.id));
     setMeds(medsList);
@@ -147,6 +157,7 @@ export default function TodayScreen() {
     setOnDuty(dutyRows[0] ?? null);
     setSymptoms(sympRows);
     setHandoffs(allHandoffs);
+    setDismissed(dismissedPairs);
     setLoading(false);
   }, [familyId, currentParent]);
 
@@ -288,6 +299,7 @@ export default function TodayScreen() {
         handoffs={handoffs}
         siblings={siblings}
         meId={me?.id ?? null}
+        dismissedFindings={dismissed}
         onAcceptHandoff={acceptHandoff}
       />
 

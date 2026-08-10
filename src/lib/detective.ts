@@ -144,6 +144,7 @@ function detectEnvironmentalContext(normalizedText: string): string | null {
 export function analyzeSymptoms(
   meds: DetectiveMed[],
   symptoms: DetectiveSymptom[],
+  dismissed?: Set<string>,
 ): Finding[] {
   const byMed = new Map<string, Finding>();
 
@@ -192,6 +193,7 @@ export function analyzeSymptoms(
         }
       }
       if (explicit || temporal) {
+        if (dismissed && dismissed.has(`${symptom.id}:${med.id}`)) continue;
         suspects.push({ med, explicit, daysAfter });
       }
     }
