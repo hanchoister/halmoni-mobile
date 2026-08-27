@@ -87,6 +87,38 @@ create policy fm_delete on family_members
     )
   );
 
+-- fm_update lets a member update their own row (name, color, etc.), which by
+-- itself would let them set is_owner=true and escalate. Enforce that
+-- ownership changes require an existing owner via a BEFORE UPDATE trigger.
+create or replace function enforce_owner_change_by_owner()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if NEW.is_owner is distinct from OLD.is_owner then
+    if not exists (
+      select 1
+      from family_members
+      where family_id = OLD.family_id
+        and user_id   = auth.uid()
+        and is_owner  = true
+        and deleted_at is null
+    ) then
+      raise exception 'Only family owners can change is_owner';
+    end if;
+  end if;
+  return NEW;
+end;
+$$;
+
+drop trigger if exists family_members_enforce_owner_change on family_members;
+create trigger family_members_enforce_owner_change
+  before update on family_members
+  for each row
+  execute function enforce_owner_change_by_owner();
+
 -- Uniform family-scoped policies for the rest of the tables.
 do $$
 declare

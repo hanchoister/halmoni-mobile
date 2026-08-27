@@ -39,7 +39,7 @@ export function LoginScreen() {
       setError(error.message);
     } else {
       setStage('code');
-      setNotice(`We sent a 6-digit code to ${cleaned}. Check your inbox.`);
+      setNotice(`We sent a code to ${cleaned}. Check your inbox.`);
       setTimeout(() => codeInputRef.current?.focus(), 50);
     }
     setBusy(false);
@@ -48,7 +48,7 @@ export function LoginScreen() {
   async function verifyCode() {
     const token = code.trim();
     if (token.length < 6) {
-      setError('Enter the 6-digit code from your email.');
+      setError('Enter the code from your email.');
       return;
     }
     setBusy(true);
@@ -106,14 +106,14 @@ export function LoginScreen() {
               <TextInput
                 ref={codeInputRef}
                 style={[styles.input, styles.codeInput]}
-                placeholder="123456"
+                placeholder="12345678"
                 placeholderTextColor="#9AA5B1"
                 autoCapitalize="none"
                 autoComplete="one-time-code"
                 autoCorrect={false}
                 keyboardType="number-pad"
                 textContentType="oneTimeCode"
-                maxLength={6}
+                maxLength={8}
                 value={code}
                 onChangeText={setCode}
                 onSubmitEditing={verifyCode}
