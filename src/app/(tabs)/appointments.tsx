@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
@@ -7,9 +7,10 @@ import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Pill } from '@/components/ui/pill';
 import { Screen } from '@/components/ui/screen';
+import { list } from '@/lib/db/repository';
+import { useDataVersion } from '@/lib/db/signal';
 import { formatRelative, formatTime } from '@/lib/format';
 import { useParents } from '@/lib/parent';
-import { supabase } from '@/lib/supabase';
 import { palette, radius, spacing } from '@/lib/theme';
 
 type ApptRow = {
@@ -24,6 +25,7 @@ type ApptRow = {
 
 export default function AppointmentsScreen() {
   const { currentParent } = useParents();
+  const dataVersion = useDataVersion();
   const [appts, setAppts] = useState<ApptRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -33,12 +35,12 @@ export default function AppointmentsScreen() {
       return;
     }
     setLoading(true);
-    const { data } = await supabase
-      .from('appointments')
-      .select('*')
-      .eq('parent_id', currentParent.id)
-      .order('starts_at', { ascending: false });
-    setAppts((data as ApptRow[] | null) ?? []);
+    const rows = (await list(
+      'appointments',
+      { parent_id: currentParent.id },
+      { orderBy: 'starts_at DESC' },
+    )) as ApptRow[];
+    setAppts(rows);
     setLoading(false);
   }, [currentParent]);
 
@@ -47,6 +49,10 @@ export default function AppointmentsScreen() {
       load();
     }, [load]),
   );
+
+  useEffect(() => {
+    if (dataVersion > 0) void load();
+  }, [dataVersion, load]);
 
   if (!currentParent) {
     return (

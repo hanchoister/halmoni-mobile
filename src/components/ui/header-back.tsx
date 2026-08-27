@@ -30,13 +30,13 @@ const styles = StyleSheet.create({
   chevron: {
     fontSize: 26,
     lineHeight: 26,
-    color: palette.sage600,
+    color: palette.terracotta500,
     fontWeight: '400',
     marginTop: -2,
   },
   label: {
     fontSize: 16,
-    color: palette.sage600,
+    color: palette.terracotta500,
     fontWeight: '600',
   },
 });
