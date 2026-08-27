@@ -24,7 +24,12 @@ function nudge() {
 
 function stampWrite(row: Record<string, any>): Record<string, any> {
   const now = new Date().toISOString();
-  return { ...row, updated_at: now };
+  // created_at is NOT NULL on every table but was left to each caller, so a
+  // caller that forgot it crashed the write (SQLITE_CONSTRAINT). Default it
+  // here. Safe because upsertRow excludes created_at from its ON CONFLICT SET
+  // clause, so this default only ever applies to a genuine insert — an update
+  // keeps whatever the row was first created with.
+  return { created_at: now, ...row, updated_at: now };
 }
 
 /** Create or update a row. Row MUST include id. */

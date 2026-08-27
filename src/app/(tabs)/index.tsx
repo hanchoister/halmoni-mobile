@@ -69,6 +69,7 @@ type OnDutyRow = {
   id: string;
   member_id: string;
   until: string;
+  created_at: string;
 };
 
 export default function TodayScreen() {
@@ -224,6 +225,10 @@ export default function TodayScreen() {
       family_id: familyId,
       member_id: me.id,
       until: until.toISOString(),
+      // writeRow stamps updated_at but not created_at, and the column is
+      // NOT NULL. Preserve the original on takeover so the row keeps the
+      // time duty first started, not the time it last changed hands.
+      created_at: onDuty?.created_at ?? new Date().toISOString(),
     });
   }
 

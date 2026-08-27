@@ -61,8 +61,12 @@ export async function upsertRow(table: SyncableTable, row: Row): Promise<void> {
   const encoded = encode(table, row);
   const cols = Object.keys(encoded);
   const placeholders = cols.map(() => '?').join(', ');
+  // created_at is immutable: it's written by the INSERT and must survive every
+  // later upsert. Leaving it in the SET clause meant any caller that re-stamped
+  // it — or omitted it and let a default fill in — silently reset the row's
+  // creation time on update.
   const setClause = cols
-    .filter((c) => c !== 'id')
+    .filter((c) => c !== 'id' && c !== 'created_at')
     .map((c) => `${c} = excluded.${c}`)
     .join(', ');
   const sql =
