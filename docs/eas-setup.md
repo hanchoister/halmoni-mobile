@@ -19,18 +19,36 @@ install arm64 Homebrew to `/opt/homebrew`, then `brew install node`, and
 make sure `/opt/homebrew/bin` precedes `/usr/local/bin` on `PATH`. Expo
 SDK 54 wants Node 20+.
 
-## 2. Fill in the three submit placeholders
+## 2. Apple Developer Program enrollment (the real gate)
 
-`eas.json` → `submit.production.ios` has `REPLACE_WITH_…` values:
+Confirmed 2026-08-26: **there is no Apple Developer account yet.** Nothing
+iOS-facing can happen until there is — no build, no TestFlight, no
+submission. It costs $99/yr and approval takes **24–48 hours**, sometimes
+longer if Apple asks for ID.
 
-- `appleId` — the Apple ID email on the developer account
-- `ascAppId` — App Store Connect → the app → App Information → "Apple ID"
-  (a number). The app record has to be created there first.
-- `appleTeamId` — developer.apple.com → Membership
+Start it early even while other work is in flight, because the waiting is
+the long pole: https://developer.apple.com/programs/enroll/
 
-`eas submit` will prompt for anything left blank, so these are a
-convenience, not strictly required. But an unedited `REPLACE_WITH_…`
-string *will* fail, so either fill them in or delete the block.
+Once approved, three values are needed for `eas submit`. The `submit` block
+was deliberately REMOVED from eas.json rather than left with placeholder
+strings, because an unedited `REPLACE_WITH_…` value fails the submit with a
+confusing error. `eas submit` prompts for all three interactively, so
+nothing is required up front. To hard-code them later, add back:
+
+    "submit": {
+      "production": {
+        "ios": {
+          "appleId": "<your Apple ID email>",
+          "ascAppId": "<App Store Connect → the app → App Information → Apple ID>",
+          "appleTeamId": "<developer.apple.com → Membership details → Team ID>"
+        }
+      }
+    }
+
+`ascAppId` only exists after the app record is created in App Store Connect
+(Apps → + → New App, bundle ID `com.hanachoi.halmoni`). If that bundle ID
+isn't in the dropdown, register it first under Certificates, Identifiers &
+Profiles → Identifiers.
 
 ## 3. `appVersionSource: "remote"` — deliberate choice
 
