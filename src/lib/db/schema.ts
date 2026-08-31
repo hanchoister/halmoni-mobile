@@ -223,6 +223,38 @@ export const CREATE_TABLE_SQL: string[] = [
   )`,
 ];
 
+// Column allow-list per table, derived from the CREATE TABLE statements above
+// so it can never drift from them.
+//
+// Production's schema is a SUPERSET of this mirror. The web app writes columns
+// mobile has no screen for — parents.dnr_status, medications.photo_color,
+// med_doses.skip_reason, notes.linked_id and others. A pulled row arrives with
+// those keys present (select('*') returns them even when null), and building an
+// INSERT from the row's own keys would then reference columns this database does
+// not have, so SQLite aborts the whole pull transaction.
+//
+// Filtering against this list keeps the mirror tolerant of any column the server
+// grows later. Dropping them locally is safe in both directions: the app has no
+// screen for them, and the push path only ever sends columns it read from here,
+// so PostgREST leaves the server's values untouched.
+export const TABLE_COLUMNS: Record<string, Set<string>> = (() => {
+  const out: Record<string, Set<string>> = {};
+  for (const stmt of CREATE_TABLE_SQL) {
+    const head = /CREATE TABLE IF NOT EXISTS (\w+)\s*\(([\s\S]*)\)/.exec(stmt);
+    if (!head) continue;
+    const [, table, body] = head;
+    const cols = new Set<string>();
+    for (const raw of body.split('\n')) {
+      // Only lines shaped like "<name> <SQLITE TYPE>" are columns; this skips
+      // blank lines, comments and table-level constraints.
+      const m = /^\s*([a-z_]+)\s+(TEXT|INTEGER|REAL|BLOB|NUMERIC)\b/i.exec(raw);
+      if (m) cols.add(m[1]);
+    }
+    out[table] = cols;
+  }
+  return out;
+})();
+
 // Columns that store JSON in TEXT and need parse/stringify at the repository boundary.
 export const JSON_COLUMNS: Record<string, string[]> = {
   parents: ['conditions', 'allergies', 'ice_contacts', 'pharmacy', 'primary_doctor', 'insurance'],

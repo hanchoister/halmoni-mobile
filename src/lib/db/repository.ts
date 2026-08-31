@@ -7,6 +7,7 @@ import {
   BOOL_COLUMNS,
   JSON_COLUMNS,
   SYNCABLE_TABLES,
+  TABLE_COLUMNS,
   SyncableTable,
 } from '@/lib/db/schema';
 
@@ -15,7 +16,15 @@ type Row = Record<string, any>;
 function encode(table: string, row: Row): Row {
   const jsonCols = JSON_COLUMNS[table] ?? [];
   const boolCols = BOOL_COLUMNS[table] ?? [];
-  const out: Row = { ...row };
+  // Keep only columns this mirror actually has. Rows pulled from Supabase carry
+  // the web app's extra columns too, and upsertRow builds its INSERT from the
+  // row's own keys — so without this filter a pull of `parents` or `medications`
+  // references a column SQLite doesn't have and aborts the whole transaction.
+  const known = TABLE_COLUMNS[table];
+  const out: Row = {};
+  for (const [k, v] of Object.entries(row)) {
+    if (!known || known.has(k)) out[k] = v;
+  }
   for (const col of jsonCols) {
     if (out[col] !== undefined && out[col] !== null && typeof out[col] !== 'string') {
       out[col] = JSON.stringify(out[col]);
