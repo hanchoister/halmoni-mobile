@@ -78,19 +78,41 @@ Every `eas` command currently fails with:
     Slug for project identified by "extra.eas.projectId" (harmony-mobile)
     does not match the "slug" field (halmoni-mobile)
 
-The EAS project was created when the app was still called *harmony* and was
-never renamed after the rebrand to *halmoni*. `app.json` says
-`halmoni-mobile`; the server still says `harmony-mobile`.
+The EAS project was created when the app was still called *harmony* and
+`app.json` was later updated to `halmoni-mobile` after the rebrand. The
+server still says `harmony-mobile`.
 
-**Fix (30 seconds, in the dashboard):**
-https://expo.dev/accounts/hanchoister/projects/harmony-mobile/settings
-→ rename the slug to `halmoni-mobile`.
+**Correction 2026-08-31 — the slug CANNOT be renamed.** An earlier version
+of this file said to rename it in the dashboard in 30 seconds. That is
+wrong, and there is no such setting to find. Expo's own documentation is
+explicit: "A project ID is associated with a single slug, which cannot be
+changed." (https://expo.fyi/eas-project-id). There is also no CLI rename —
+`eas project:` offers only `delete`, `info`, `init` and `new`.
 
-Safe: nothing has been published yet, so no existing build or update URL
-breaks. This keeps the existing projectId and `updates.url` untouched, which
-is why it beats the alternatives — editing app.json's slug back to
-`harmony-mobile` enshrines the wrong name, and `eas init --force` mints a new
-project and forces an `updates.url` change too.
+So there are exactly two real options:
+
+**Option A — match app.json to the server (10 seconds, zero risk).**
+Set `"slug": "harmony-mobile"` in app.json. Keeps the existing projectId and
+`updates.url`. Cost: the EAS dashboard says "harmony" forever. The slug is
+internal — it does not appear to users, and the App Store identity comes
+from `ios.bundleIdentifier` (`com.hanachoi.halmoni`), not the slug.
+
+**Option B — create a new EAS project with the right slug (recommended).**
+Verified 2026-08-31: the `harmony-mobile` project has **zero builds and
+nothing ever published**, so nothing is lost by abandoning it. Because a
+projectId/slug pairing is permanent, before the first build is the only
+moment this is ever free.
+
+    # 1. clear the old identity from app.json
+    #    (remove extra.eas.projectId and the whole updates block)
+    # 2. create the new project — writes a fresh projectId into app.json
+    npx eas-cli@latest init --account hanchoister
+    # 3. re-point updates.url at the new projectId
+    npx eas-cli@latest update:configure
+
+Afterwards `npx eas-cli@latest project:info` should read
+`@hanchoister/halmoni-mobile`. The old empty project can then be removed
+with `npx eas-cli@latest project:delete` (optional; harmless to leave).
 
 ### Then publish
 
