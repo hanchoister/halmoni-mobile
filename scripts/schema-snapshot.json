@@ -1,0 +1,182 @@
+{
+  "schemaVersion": 2,
+  "tables": {
+    "families": [
+      "id",
+      "name!",
+      "created_at!",
+      "updated_at!",
+      "deleted_at"
+    ],
+    "family_members": [
+      "id",
+      "family_id!",
+      "user_id",
+      "name!",
+      "relation",
+      "phone",
+      "color",
+      "photo_url",
+      "is_owner!",
+      "created_at!",
+      "updated_at!",
+      "deleted_at"
+    ],
+    "parents": [
+      "id",
+      "family_id!",
+      "name!",
+      "nickname",
+      "photo_url",
+      "dob",
+      "conditions!",
+      "allergies!",
+      "preferences",
+      "blood_type",
+      "ice_contacts!",
+      "pharmacy",
+      "primary_doctor",
+      "insurance",
+      "created_at!",
+      "updated_at!",
+      "deleted_at"
+    ],
+    "medications": [
+      "id",
+      "parent_id!",
+      "family_id!",
+      "name!",
+      "dose",
+      "purpose",
+      "schedule!",
+      "prescriber",
+      "pharmacy",
+      "refill_by",
+      "pills_left",
+      "notes",
+      "started_at",
+      "created_at!",
+      "updated_at!",
+      "deleted_at"
+    ],
+    "med_doses": [
+      "id",
+      "medication_id!",
+      "parent_id!",
+      "family_id!",
+      "scheduled_at!",
+      "given_at",
+      "given_by_member_id",
+      "skipped!",
+      "created_at!",
+      "updated_at!",
+      "deleted_at"
+    ],
+    "appointments": [
+      "id",
+      "parent_id!",
+      "family_id!",
+      "provider_name",
+      "specialty",
+      "location",
+      "starts_at!",
+      "duration_min",
+      "status!",
+      "summary",
+      "prep_notes",
+      "created_at!",
+      "updated_at!",
+      "deleted_at"
+    ],
+    "visit_notes": [
+      "id",
+      "appointment_id!",
+      "family_id!",
+      "kind!",
+      "body!",
+      "captured_at!",
+      "created_at!",
+      "updated_at!",
+      "deleted_at"
+    ],
+    "symptoms": [
+      "id",
+      "parent_id!",
+      "family_id!",
+      "description!",
+      "severity",
+      "observed_at!",
+      "observed_by_member_id",
+      "possible_med_links",
+      "created_at!",
+      "updated_at!",
+      "deleted_at"
+    ],
+    "handoffs": [
+      "id",
+      "parent_id!",
+      "family_id!",
+      "from_member_id",
+      "to_member_id!",
+      "summary!",
+      "personal_message",
+      "sent_at!",
+      "accepted_at",
+      "until",
+      "created_at!",
+      "updated_at!",
+      "deleted_at"
+    ],
+    "on_duty": [
+      "id",
+      "parent_id!",
+      "family_id!",
+      "member_id!",
+      "until",
+      "created_at!",
+      "updated_at!",
+      "deleted_at"
+    ],
+    "thread_messages": [
+      "id",
+      "parent_id!",
+      "family_id!",
+      "author_member_id",
+      "body!",
+      "is_digest!",
+      "created_at!",
+      "updated_at!",
+      "deleted_at"
+    ],
+    "notes": [
+      "id",
+      "parent_id!",
+      "family_id!",
+      "author_member_id",
+      "kind!",
+      "body!",
+      "created_at!",
+      "updated_at!",
+      "deleted_at"
+    ],
+    "sync_meta": [
+      "table_name",
+      "last_pulled_at!"
+    ],
+    "pending_writes": [
+      "id",
+      "table_name!",
+      "op!",
+      "row_id!",
+      "payload!",
+      "enqueued_at!",
+      "attempts!",
+      "last_error"
+    ],
+    "known_ids": [
+      "table_name!",
+      "row_id!",
+      "seen_at!"
+    ]
+  }
+}
