@@ -128,6 +128,25 @@ export default function FamilyScreen() {
     }
   }
 
+  // Sharing must NOT mint a code. A family has one active invite at a time; if
+  // every tap of Share generated a new one, the code on screen — and any code
+  // already read out to a sibling — would silently stop being the current one.
+  async function shareInvite(code: string) {
+    const parentLabel = currentParent?.nickname?.trim() || currentParent?.name || 'our parent';
+    const inviterName = me?.name?.trim();
+    const opener = inviterName ? `${inviterName} set up Halmoni` : 'I set up Halmoni';
+    const message =
+      `${opener} to help our family coordinate ${parentLabel}'s care.\n\n` +
+      `Join with code: ${code}\n\n` +
+      `Get the app: https://halmoni.uk`;
+    try {
+      // The code is on screen already, so a dismissed share sheet needs no alert.
+      await Share.share({ message });
+    } catch {
+      // Sharing is a convenience, not the only route — the code is visible.
+    }
+  }
+
   async function createInvite() {
     if (!familyId) return;
     const { data, error } = await supabase.rpc('create_invite', { fid: familyId });
@@ -141,19 +160,7 @@ export default function FamilyScreen() {
       expires_at: new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString(),
     });
     await Clipboard.setStringAsync(code);
-    const parentLabel = currentParent?.nickname?.trim() || currentParent?.name || 'our parent';
-    const inviterName = me?.name?.trim();
-    const opener = inviterName ? `${inviterName} set up Halmoni` : "I set up Halmoni";
-    const message =
-      `${opener} to help our family coordinate ${parentLabel}'s care.\n\n` +
-      `Join with code: ${code}\n\n` +
-      `Get the app: https://halmoni.uk`;
-    try {
-      // The code is on screen now, so a dismissed share sheet needs no alert.
-      await Share.share({ message });
-    } catch {
-      // Sharing is a convenience; the code is already visible and copied.
-    }
+    await shareInvite(code);
   }
 
   if (!currentParent) {
@@ -196,9 +203,14 @@ export default function FamilyScreen() {
                   title="Share"
                   variant="secondary"
                   style={styles.inviteBtn}
-                  onPress={createInvite}
+                  onPress={() => shareInvite(invite.code)}
                 />
               </View>
+              <Pressable onPress={createInvite} hitSlop={8}>
+                <Text style={styles.inviteReplace}>
+                  Replace with a new code
+                </Text>
+              </Pressable>
             </>
           ) : (
             <>
@@ -341,6 +353,13 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   inviteHint: { fontSize: 12, color: palette.ink500 },
+  inviteReplace: {
+    fontSize: 12,
+    color: palette.ink500,
+    textDecorationLine: 'underline',
+    marginTop: spacing.sm,
+    alignSelf: 'flex-start',
+  },
   inviteActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
   inviteBtn: { flex: 1 },
   sectionLabel: { fontSize: 11, fontWeight: '700', color: palette.ink500, letterSpacing: 1 },
