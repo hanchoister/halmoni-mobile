@@ -4,7 +4,11 @@
 
 import * as SQLite from 'expo-sqlite';
 
-import { CREATE_TABLE_SQL, SCHEMA_VERSION } from '@/lib/db/schema';
+import { CREATE_TABLE_SQL, SCHEMA_VERSION, SYNCABLE_TABLES } from '@/lib/db/schema';
+
+// Everything rebuildable from the server. Dropping sync_meta resets the
+// per-table high-water marks, which is what forces the full re-pull.
+const REBUILDABLE_TABLES: string[] = [...SYNCABLE_TABLES, 'sync_meta', 'known_ids'];
 
 const DB_NAME = 'halmoni.db';
 
@@ -20,13 +24,32 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
     // Enable FK checks + WAL for concurrent readers.
     await db.execAsync('PRAGMA journal_mode = WAL');
     await db.execAsync('PRAGMA foreign_keys = ON');
-    for (const stmt of CREATE_TABLE_SQL) {
-      await db.execAsync(stmt);
-    }
-    // Version metadata for future migrations.
     await db.execAsync(
       `CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)`,
     );
+
+    // CREATE TABLE IF NOT EXISTS does nothing to a table that already exists, so
+    // a changed column definition would never reach an installed device — and
+    // SQLite cannot drop a NOT NULL in place anyway. The mirror is a cache of the
+    // server, so the honest migration is to discard it and re-pull rather than
+    // hand-write an ALTER path for every future shape change.
+    //
+    // pending_writes is deliberately kept: those are the user's own edits that
+    // have not reached the server yet, and the one thing here that syncing
+    // cannot recover.
+    const existing = await db.getFirstAsync<{ version: number }>(
+      `SELECT version FROM schema_version LIMIT 1`,
+    );
+    if (existing && existing.version < SCHEMA_VERSION) {
+      for (const table of REBUILDABLE_TABLES) {
+        await db.execAsync(`DROP TABLE IF EXISTS ${table}`);
+      }
+      await db.runAsync(`DELETE FROM schema_version`);
+    }
+
+    for (const stmt of CREATE_TABLE_SQL) {
+      await db.execAsync(stmt);
+    }
     await db.runAsync(
       `INSERT OR IGNORE INTO schema_version (version) VALUES (?)`,
       SCHEMA_VERSION,

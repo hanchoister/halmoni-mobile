@@ -5,7 +5,7 @@
 // supabase.from() directly continue to work, they just skip the offline layer.
 
 import { getDb } from '@/lib/db/client';
-import { enqueueWrite, softDelete, upsertRow } from '@/lib/db/repository';
+import { enqueueWrite, getById, softDelete, upsertRow } from '@/lib/db/repository';
 import type { SyncableTable } from '@/lib/db/schema';
 import { bumpDataVersion } from '@/lib/db/signal';
 import { isDemoMode } from '@/lib/demo-mode';
@@ -74,9 +74,21 @@ export async function writeRows(
 /** Soft-delete a row (sets deleted_at locally and enqueues the tombstone). */
 export async function deleteRow(table: SyncableTable, id: string): Promise<void> {
   const now = new Date().toISOString();
+
+  // Read the row BEFORE soft-deleting it: getById filters out tombstoned rows,
+  // and the whole row is needed for the tombstone push below.
+  const existing = await getById(table, id);
+
   await softDelete(table, id);
   if (!isDemoMode()) {
+    // The tombstone has to carry the FULL row, not just {id, deleted_at}.
+    // Deletes go out through the same upsert as everything else, and PostgREST
+    // turns that into INSERT ... ON CONFLICT DO UPDATE. Postgres validates NOT
+    // NULL against the proposed INSERT row before it ever detects the conflict,
+    // so a payload missing family_id was rejected with 23502 every time — which
+    // is why deletes never reached other devices.
     await enqueueWrite(table, 'delete', {
+      ...(existing ?? {}),
       id,
       deleted_at: now,
       updated_at: now,

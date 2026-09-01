@@ -6,7 +6,7 @@
 // JSON-shaped columns (arrays, objects) are stored as TEXT and parsed via the
 // repository. This keeps SQLite ↔ Postgres alignment simple.
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 // Ordered so foreign-key-referenced tables come first.
 export const CREATE_TABLE_SQL: string[] = [
@@ -142,7 +142,10 @@ export const CREATE_TABLE_SQL: string[] = [
     id                TEXT PRIMARY KEY,
     parent_id         TEXT NOT NULL,
     family_id         TEXT NOT NULL,
-    from_member_id    TEXT NOT NULL,
+    -- Nullable to match Postgres: the FK there is ON DELETE SET NULL, so a
+    -- handoff whose sender later leaves the family arrives with this unset.
+    -- Declaring it NOT NULL here made that row unstorable and killed the pull.
+    from_member_id    TEXT,
     to_member_id      TEXT NOT NULL,
     summary           TEXT NOT NULL,
     personal_message  TEXT,

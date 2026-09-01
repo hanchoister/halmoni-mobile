@@ -115,12 +115,22 @@ async function pullOnce(): Promise<{
     }
     if (!data || data.length === 0) continue;
 
-    await upsertRows(table, data);
-    for (const row of data) await recordKnownId(table, row.id as string);
+    // Writing to the local mirror can fail on its own terms — a column the
+    // mirror declares NOT NULL that Postgres allows to be null, for instance.
+    // That is still this table's problem, not every table's, and crucially not
+    // a reason to abandon the whole sync: an unwrapped throw here left
+    // lastSyncAt permanently null and stopped every later table cold.
+    try {
+      await upsertRows(table, data);
+      for (const row of data) await recordKnownId(table, row.id as string);
 
-    const newest = data[data.length - 1].updated_at as string;
-    await setLastPulledAt(table, newest);
-    pulled[table] = data.length;
+      const newest = data[data.length - 1].updated_at as string;
+      await setLastPulledAt(table, newest);
+      pulled[table] = data.length;
+    } catch (err) {
+      errors.push(`${table}: ${err instanceof Error ? err.message : String(err)}`);
+      continue;
+    }
 
     // If we hit the batch limit, another pull cycle will pick up the rest.
   }
