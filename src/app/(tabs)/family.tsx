@@ -302,7 +302,11 @@ export default function FamilyScreen() {
                   {from?.name ?? 'Someone'} → {to?.name ?? 'Someone'}
                 </Text>
                 <Text style={styles.handoffWhen}>{formatRelative(h.sent_at)}</Text>
-                <Text style={styles.handoffSummary}>{h.summary}</Text>
+                {h.summary?.trim() ? (
+                  <Text style={styles.handoffSummary}>{h.summary}</Text>
+                ) : (
+                  <Text style={styles.handoffNoSummary}>No summary added.</Text>
+                )}
                 {h.personal_message && (
                   <Text style={styles.handoffMessage}>&ldquo;{h.personal_message}&rdquo;</Text>
                 )}
@@ -316,6 +320,7 @@ export default function FamilyScreen() {
 }
 
 const styles = StyleSheet.create({
+  handoffNoSummary: { fontSize: 13, color: palette.ink300, fontStyle: 'italic' },
   inviteBox: {
     backgroundColor: palette.cream100,
     borderRadius: radius.md,

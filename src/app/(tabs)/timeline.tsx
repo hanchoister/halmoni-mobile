@@ -146,7 +146,7 @@ export default function TimelineScreen() {
         kind: 'handoff',
         when: h.sent_at,
         title: 'Hand off',
-        body: h.summary,
+        body: h.summary?.trim() || undefined,
         authorMemberId: h.from_member_id,
       });
     }

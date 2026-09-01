@@ -55,7 +55,11 @@ export default function HandoffScreen() {
   }
 
   async function send() {
-    if (!toId || !summary.trim() || !currentParent || !me) return;
+    // Only the recipient is required — you cannot hand off to nobody. Everything
+    // else is optional on purpose: a handoff often happens in a hurry, and a form
+    // that refuses to submit is worse than a sparse record. `summary` is NOT NULL
+    // on the server, so an empty note is stored as an empty string, not null.
+    if (!toId || !currentParent || !me) return;
     setSaving(true);
     try {
       const nowIso = new Date().toISOString();
@@ -112,13 +116,12 @@ export default function HandoffScreen() {
       </Card>
 
       <Card>
-        <Field label="Summary" required>
+        <Field label="Summary">
           <Input
             value={summary}
             onChangeText={setSummary}
-            placeholder="What they need to know to step in."
+            placeholder="Optional — what they need to know to step in."
             multiline
-            autoFocus
           />
         </Field>
         <View style={{ height: spacing.md }} />
@@ -126,7 +129,7 @@ export default function HandoffScreen() {
           <Input
             value={personalMessage}
             onChangeText={setPersonalMessage}
-            placeholder="Anything you'd say to them in person."
+            placeholder="Optional — anything you'd say to them in person."
             multiline
           />
         </Field>
@@ -151,7 +154,7 @@ export default function HandoffScreen() {
       <Button
         title="Hand off"
         onPress={send}
-        disabled={!toId || !summary.trim()}
+        disabled={!toId}
         busy={saving}
       />
       <Button title="Cancel" onPress={() => router.back()} variant="secondary" />
