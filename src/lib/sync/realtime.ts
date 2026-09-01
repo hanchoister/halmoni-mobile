@@ -35,6 +35,12 @@ const LIVE_TABLES: SyncableTable[] = [
 
 let _channel: RealtimeChannel | null = null;
 let _channelFamilyId: string | null = null;
+let _lastStatus: string | null = null;
+
+/** Last realtime subscription status, for diagnostics. */
+export function realtimeStatus(): string | null {
+  return _lastStatus;
+}
 
 async function handleEvent(
   table: SyncableTable,
@@ -64,24 +70,34 @@ export function startRealtime(familyId: string) {
 
   const ch = supabase.channel(`halmoni-family-${familyId}`);
   for (const table of LIVE_TABLES) {
+    // `families` is keyed by `id`; every other table carries `family_id`.
+    // Filtering families on a column it does not have made that one binding
+    // invalid, which errors the whole channel — taking live updates down for
+    // all twelve tables, not just this one.
+    const filter =
+      table === 'families' ? `id=eq.${familyId}` : `family_id=eq.${familyId}`;
     ch.on(
       'postgres_changes' as any,
       {
         event: '*',
         schema: 'public',
         table,
-        filter: `family_id=eq.${familyId}`,
+        filter,
       },
       (payload: RealtimePostgresChangesPayload<Record<string, any>>) => {
         void handleEvent(table, payload);
       },
     );
   }
-  ch.subscribe((status) => {
+  ch.subscribe((status, err) => {
     if (__DEV__) {
       // eslint-disable-next-line no-console
-      console.log('[realtime]', status, 'family', familyId);
+      console.log('[realtime]', status, 'family', familyId, err ?? '');
     }
+    // A dead channel is silent by design, which is how a broken filter went
+    // unnoticed. Record it so the diagnostics screen can say "live updates off"
+    // rather than the app just feeling slow.
+    _lastStatus = status;
   });
   _channel = ch;
   _channelFamilyId = familyId;
@@ -92,5 +108,6 @@ export function stopRealtime() {
     void supabase.removeChannel(_channel);
     _channel = null;
     _channelFamilyId = null;
+    _lastStatus = null;
   }
 }

@@ -219,12 +219,41 @@ export async function enqueueWrite(
   );
 }
 
+// A write that has failed this many times is quarantined: left in the queue for
+// diagnosis but no longer retried, so one permanently-rejected row cannot block
+// its table's queue forever.
+export const MAX_PUSH_ATTEMPTS = 5;
+
 export async function listPendingWrites(): Promise<
   Array<{ id: number; table_name: SyncableTable; op: PendingOp; row_id: string; payload: string; attempts: number }>
 > {
   const db = await getDb();
   return db.getAllAsync(
-    `SELECT id, table_name, op, row_id, payload, attempts FROM pending_writes ORDER BY id`,
+    `SELECT id, table_name, op, row_id, payload, attempts FROM pending_writes ` +
+      `WHERE attempts < ? ORDER BY id`,
+    MAX_PUSH_ATTEMPTS,
+  );
+}
+
+/** Writes that have exhausted their retries. Surfaced in diagnostics. */
+export async function countQuarantinedWrites(): Promise<number> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ n: number }>(
+    `SELECT count(*) AS n FROM pending_writes WHERE attempts >= ?`,
+    MAX_PUSH_ATTEMPTS,
+  );
+  return row?.n ?? 0;
+}
+
+/** The distinct errors behind quarantined writes, for the diagnostics screen. */
+export async function listQuarantinedErrors(): Promise<
+  Array<{ table_name: string; row_id: string; attempts: number; last_error: string | null }>
+> {
+  const db = await getDb();
+  return db.getAllAsync(
+    `SELECT table_name, row_id, attempts, last_error FROM pending_writes ` +
+      `WHERE attempts >= ? ORDER BY id`,
+    MAX_PUSH_ATTEMPTS,
   );
 }
 

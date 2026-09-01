@@ -30,12 +30,14 @@ const PULL_BATCH_LIMIT = 500;
 export interface SyncResult {
   pushed: number;
   pulled: Partial<Record<SyncableTable, number>>;
+  /** Per-table failures. Non-empty means some data did not move. */
+  errors: string[];
   durationMs: number;
 }
 
-async function pushOnce(): Promise<number> {
+async function pushOnce(): Promise<{ pushed: number; errors: string[] }> {
   const pending = await listPendingWrites();
-  if (pending.length === 0) return 0;
+  if (pending.length === 0) return { pushed: 0, errors: [] };
 
   // Coalesce: multiple writes to the same row collapse to the latest payload.
   // Highest queue id wins (writes are inserted monotonically).
@@ -59,14 +61,20 @@ async function pushOnce(): Promise<number> {
   }
 
   let pushedCount = 0;
+  const errors: string[] = [];
   for (const [table, writes] of byTable) {
     const rows = writes.map((w) => JSON.parse(w.payload));
     const { error } = await withRetry(async () =>
       await supabase.from(table).upsert(rows, { onConflict: 'id' }),
     );
     if (error) {
+      // Isolate the failure to this table. Previously this threw, which meant a
+      // single rejected row stopped every other table from pushing AND — because
+      // syncOnce awaited push before pull — stopped the device pulling anything
+      // at all. One bad write froze the whole device in both directions.
       for (const w of writes) await markWriteAttempted(w.id, error.message);
-      throw new Error(`push failed for ${table}: ${error.message}`);
+      errors.push(`${table}: ${error.message}`);
+      continue;
     }
     // Success — drop every queue entry for these rows (including coalesced older ones).
     for (const w of writes) {
@@ -76,11 +84,15 @@ async function pushOnce(): Promise<number> {
     }
     pushedCount += writes.length;
   }
-  return pushedCount;
+  return { pushed: pushedCount, errors };
 }
 
-async function pullOnce(): Promise<Partial<Record<SyncableTable, number>>> {
+async function pullOnce(): Promise<{
+  pulled: Partial<Record<SyncableTable, number>>;
+  errors: string[];
+}> {
   const pulled: Partial<Record<SyncableTable, number>> = {};
+  const errors: string[] = [];
 
   for (const table of SYNCABLE_TABLES) {
     const last = await getLastPulledAt(table);
@@ -96,7 +108,11 @@ async function pullOnce(): Promise<Partial<Record<SyncableTable, number>>> {
         .limit(PULL_BATCH_LIMIT),
     );
 
-    if (error) throw new Error(`pull failed for ${table}: ${error.message}`);
+    if (error) {
+      // Same reasoning as push: one table's failure must not stop the others.
+      errors.push(`${table}: ${error.message}`);
+      continue;
+    }
     if (!data || data.length === 0) continue;
 
     await upsertRows(table, data);
@@ -109,15 +125,24 @@ async function pullOnce(): Promise<Partial<Record<SyncableTable, number>>> {
     // If we hit the batch limit, another pull cycle will pick up the rest.
   }
 
-  return pulled;
+  return { pulled, errors };
 }
 
 /** One full sync cycle: push local changes, then pull remote deltas. */
 export async function syncOnce(): Promise<SyncResult> {
   const t0 = Date.now();
-  const pushed = await pushOnce();
-  const pulled = await pullOnce();
-  const totalPulled = Object.values(pulled).reduce((a, b) => a + (b ?? 0), 0);
+  // Pull runs unconditionally. It used to sit behind `await pushOnce()`, so any
+  // push failure meant the device also stopped receiving everyone else's
+  // changes — the worst possible failure mode for a shared care record.
+  const push = await pushOnce();
+  const pull = await pullOnce();
+  const totalPulled = Object.values(pull.pulled).reduce((a, b) => a + (b ?? 0), 0);
   if (totalPulled > 0) bumpDataVersion();
-  return { pushed, pulled, durationMs: Date.now() - t0 };
+  const errors = [...push.errors, ...pull.errors];
+  return {
+    pushed: push.pushed,
+    pulled: pull.pulled,
+    errors,
+    durationMs: Date.now() - t0,
+  };
 }
