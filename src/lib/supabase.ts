@@ -1,10 +1,14 @@
 import 'react-native-url-polyfill/auto';
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 import { isDemoMode } from '@/lib/demo-mode';
+import { SecureSessionStorage } from '@/lib/secure-session-storage';
 import { demoSupabase } from '@/lib/supabase-demo';
+
+// The keychain entry holding the session. Exported so the account-deletion
+// path can remove it explicitly.
+export const AUTH_STORAGE_KEY = 'halmoni-auth';
 
 // Real client is created lazily so demo builds work without env vars set.
 let _realClient: SupabaseClient | null = null;
@@ -20,11 +24,21 @@ function getRealClient(): SupabaseClient {
   }
   _realClient = createClient(url, key, {
     auth: {
-      storage: AsyncStorage,
+      // Keychain-backed rather than AsyncStorage: the session is a bearer token
+      // for a family's entire health record and should not sit in plain JSON
+      // inside the app container.
+      storage: SecureSessionStorage,
+      // Pinned rather than left to the default sb-<ref>-auth-token, so account
+      // deletion can clear the session by name. SecureStore has no "list keys"
+      // API, so an unknown key would be unclearable.
+      storageKey: AUTH_STORAGE_KEY,
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: false,
-      flowType: 'implicit',
+      // PKCE binds the code exchange to this device with a one-time verifier,
+      // so an intercepted callback is useless on its own. The implicit flow
+      // returns the token straight in the redirect with no such binding.
+      flowType: 'pkce',
     },
   });
   return _realClient;

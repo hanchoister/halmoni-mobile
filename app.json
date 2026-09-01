@@ -52,7 +52,8 @@
         {
           "faceIDPermission": "Halmoni uses Face ID to unlock the app so your family's medical info stays private."
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,

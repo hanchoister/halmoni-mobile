@@ -15,7 +15,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SQLite from 'expo-sqlite';
 
-import { supabase } from '@/lib/supabase';
+import { SecureSessionStorage } from '@/lib/secure-session-storage';
+import { AUTH_STORAGE_KEY, supabase } from '@/lib/supabase';
 
 const DB_NAME = 'halmoni.db';
 
@@ -46,17 +47,22 @@ export async function wipeLocalData(): Promise<void> {
     // If the file is already gone we have nothing to do.
   }
 
-  // Drop our own keys plus the cached Supabase session. Scoped by prefix
-  // rather than AsyncStorage.clear() so we never touch anything we did not
-  // write ourselves.
+  // App preferences live in AsyncStorage. Scoped by prefix rather than
+  // AsyncStorage.clear() so we never touch anything we did not write.
   try {
     const keys = await AsyncStorage.getAllKeys();
-    const ours = keys.filter(
-      (k) => k.startsWith('halmoni') || k.startsWith('sb-'),
-    );
+    const ours = keys.filter((k) => k.startsWith('halmoni'));
     if (ours.length) await AsyncStorage.multiRemove(ours);
   } catch {
-    // Non-fatal: signOut below still clears the session.
+    // Non-fatal — the signOut below still drops the session.
+  }
+
+  // The session itself lives in the keychain now, not AsyncStorage, and
+  // SecureStore cannot be enumerated — so it has to be removed by name.
+  try {
+    await SecureSessionStorage.removeItem(AUTH_STORAGE_KEY);
+  } catch {
+    // Non-fatal for the same reason.
   }
 }
 
