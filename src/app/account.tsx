@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/field';
 import { Screen } from '@/components/ui/screen';
-import { deleteAccount } from '@/lib/account/delete-account';
+import { deleteAccount, wipeLocalData } from '@/lib/account/delete-account';
 import { useAuth } from '@/lib/auth';
 import { useFamily } from '@/lib/family';
 import { useMe } from '@/lib/me';
@@ -27,6 +27,42 @@ export default function AccountScreen() {
   // whole family's records with it. Say so plainly before they confirm.
   const isLastMember = siblings.length <= 1;
   const canConfirm = confirmText.trim().toUpperCase() === 'DELETE' && !deleting;
+
+  // Escape hatch for the case where the device's mirror has drifted from the
+  // server — most sharply after data is removed server-side, which leaves the
+  // phone queueing writes for rows (or whole families) that no longer exist.
+  // Those retry until they quarantine and can never succeed. Rebuilding the
+  // mirror from the server is the only clean recovery, and it is safe because
+  // the mirror is a cache: anything not yet pushed is, by definition, already
+  // rejected.
+  function resetLocalData() {
+    Alert.alert(
+      'Reset this device?',
+      'Clears the copy of your family\u2019s records stored on this phone and ' +
+        'downloads a fresh one. Nothing on the server changes, and your other ' +
+        'devices are unaffected.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: async () => {
+            setBusy(true);
+            try {
+              await wipeLocalData();
+              await supabase.auth.signOut();
+            } catch (err) {
+              setBusy(false);
+              Alert.alert(
+                'Could not reset',
+                err instanceof Error ? err.message : String(err),
+              );
+            }
+          },
+        },
+      ],
+    );
+  }
 
   async function confirmDelete() {
     if (!canConfirm) return;
@@ -106,6 +142,22 @@ export default function AccountScreen() {
         <Text style={styles.sub}>You&apos;ll be returned to the sign-in screen.</Text>
         <View style={{ height: spacing.sm }} />
         <Button title="Sign out" onPress={signOut} variant="danger" busy={busy} />
+      </Card>
+
+      <Card>
+        <Text style={styles.sectionLabel}>TROUBLE SYNCING?</Text>
+        <Text style={styles.sub}>
+          Rebuilds this phone&apos;s copy of your records from the server. Use it if
+          changes stop appearing or a sync error will not clear. Your family&apos;s
+          data is not affected.
+        </Text>
+        <View style={{ height: spacing.sm }} />
+        <Button
+          title="Reset local data"
+          onPress={resetLocalData}
+          variant="secondary"
+          busy={busy}
+        />
       </Card>
 
       <Card>
