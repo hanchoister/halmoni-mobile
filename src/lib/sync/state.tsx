@@ -35,9 +35,12 @@ const SyncContext = createContext<SyncState>({
 const FOREGROUND_INTERVAL_MS = 30_000;
 const DEBOUNCE_MS = 400;
 
-function isNetworkError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
+function isNetworkErrorMessage(msg: string): boolean {
   return /network|fetch|failed to fetch|offline|timed? out/i.test(msg);
+}
+
+function isNetworkError(err: unknown): boolean {
+  return isNetworkErrorMessage(err instanceof Error ? err.message : String(err));
 }
 
 export function SyncProvider({ children }: { children: ReactNode }) {
@@ -55,8 +58,20 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     try {
       const result: SyncResult = await syncOnce();
       setLastSyncAt(new Date().toISOString());
-      setLastError(null);
-      setStatus('synced');
+
+      // Per-table failures no longer throw — they are collected so the rest of
+      // the sync can proceed. That means they have to be reported explicitly,
+      // or a run where nothing moved would still show as "synced".
+      if (result.errors.length > 0) {
+        setLastError(result.errors.join('; '));
+        setStatus(result.errors.some(isNetworkErrorMessage) ? 'offline' : 'error');
+        // eslint-disable-next-line no-console
+        console.warn('[sync] FAILED:\n  ' + result.errors.join('\n  '));
+      } else {
+        setLastError(null);
+        setStatus('synced');
+      }
+
       // Log pulled counts in dev only to aid debugging.
       if (__DEV__ && (result.pushed || Object.keys(result.pulled).length)) {
         // eslint-disable-next-line no-console

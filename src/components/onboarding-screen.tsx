@@ -15,6 +15,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/lib/auth';
 import { useFamily } from '@/lib/family';
 import { supabase } from '@/lib/supabase';
+import { syncOnce } from '@/lib/sync/engine';
+
+// Joining a family hands you an empty local mirror. Opening the app before the
+// first pull lands shows blank screens that look exactly like a brand-new
+// family, so we hold the (busy) onboarding screen until the data is actually
+// there. Best-effort: a sync failure must never trap someone who has genuinely
+// joined, so the gate opens regardless.
+async function warmMirror(): Promise<void> {
+  try {
+    await syncOnce();
+  } catch {
+    // Non-fatal — the periodic sync will fill the mirror shortly.
+  }
+}
 
 type Mode = 'choose' | 'create' | 'join';
 const COLORS = ['sage', 'terracotta', 'butter', 'ink'] as const;
@@ -77,11 +91,15 @@ export function OnboardingScreen() {
       member_name: memberName.trim(),
       member_color: color,
     });
-    setBusy(false);
     if (rpcError) {
+      setBusy(false);
       setError(rpcError.message);
       return;
     }
+    // Pull the family's records in before handing over, so the first screen
+    // they see is their family rather than an empty one.
+    await warmMirror();
+    setBusy(false);
     await refresh();
   }
 

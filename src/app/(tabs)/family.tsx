@@ -28,6 +28,8 @@ type ThreadRow = {
   is_digest: boolean;
 };
 
+type InviteRow = { code: string; expires_at: string };
+
 type HandoffRow = {
   id: string;
   from_member_id: string | null;
@@ -48,6 +50,7 @@ export default function FamilyScreen() {
   const [thread, setThread] = useState<ThreadRow[]>([]);
   const [handoffs, setHandoffs] = useState<HandoffRow[]>([]);
   const [onDuty, setOnDuty] = useState<OnDutyRow | null>(null);
+  const [invite, setInvite] = useState<InviteRow | null>(null);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -76,6 +79,18 @@ export default function FamilyScreen() {
     setThread(threadRows);
     setHandoffs(handoffRows);
     setOnDuty(dutyRows[0] ?? null);
+    // family_invites is not part of the synced mirror, so read it directly.
+    // Showing the family's existing code beats minting a fresh one every time
+    // someone wants to read it out loud.
+    const { data: inviteRows } = await supabase
+      .from('family_invites')
+      .select('code, expires_at')
+      .eq('family_id', familyId)
+      .is('revoked_at', null)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1);
+    setInvite(inviteRows && inviteRows.length > 0 ? (inviteRows[0] as InviteRow) : null);
     await refreshMe();
     setLoading(false);
   }, [familyId, currentParent, refreshMe]);
@@ -121,6 +136,10 @@ export default function FamilyScreen() {
       return;
     }
     const code = data as string;
+    setInvite({
+      code,
+      expires_at: new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString(),
+    });
     await Clipboard.setStringAsync(code);
     const parentLabel = currentParent?.nickname?.trim() || currentParent?.name || 'our parent';
     const inviterName = me?.name?.trim();
@@ -130,12 +149,10 @@ export default function FamilyScreen() {
       `Join with code: ${code}\n\n` +
       `Get the app: https://halmoni.uk`;
     try {
-      const result = await Share.share({ message });
-      if (result.action === Share.dismissedAction) {
-        Alert.alert('Invite code copied', `Share this code: ${code}`);
-      }
-    } catch (e) {
-      Alert.alert('Invite code copied', `Share this code: ${code}`);
+      // The code is on screen now, so a dismissed share sheet needs no alert.
+      await Share.share({ message });
+    } catch {
+      // Sharing is a convenience; the code is already visible and copied.
     }
   }
 
@@ -153,12 +170,49 @@ export default function FamilyScreen() {
       <Card>
         <View style={styles.headerRow}>
           <Text style={styles.sectionLabel}>SIBLINGS</Text>
-          <Pressable onPress={createInvite}>
-            <Text style={styles.linkText}>Invite</Text>
-          </Pressable>
         </View>
+
+        <View style={styles.inviteBox}>
+          {invite ? (
+            <>
+              <Text style={styles.inviteLabel}>INVITE CODE</Text>
+              <Text selectable style={styles.inviteCode}>
+                {invite.code}
+              </Text>
+              <Text style={styles.inviteHint}>
+                Read it out or tap Share. Expires {formatRelative(invite.expires_at)}.
+              </Text>
+              <View style={styles.inviteActions}>
+                <Button
+                  title="Copy"
+                  variant="secondary"
+                  style={styles.inviteBtn}
+                  onPress={async () => {
+                    await Clipboard.setStringAsync(invite.code);
+                    Alert.alert('Copied', `Invite code ${invite.code} copied.`);
+                  }}
+                />
+                <Button
+                  title="Share"
+                  variant="secondary"
+                  style={styles.inviteBtn}
+                  onPress={createInvite}
+                />
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={styles.inviteHint}>
+                Siblings join with a code. Anyone in the family can create one.
+              </Text>
+              <View style={{ height: spacing.sm }} />
+              <Button title="Create invite code" variant="secondary" onPress={createInvite} />
+            </>
+          )}
+        </View>
+
         {siblings.length === 0 ? (
-          <Text style={styles.empty}>Just you so far. Tap Invite to bring siblings in.</Text>
+          <Text style={styles.empty}>Just you so far.</Text>
         ) : (
           <View style={styles.siblingGrid}>
             {siblings.map((s) => {
@@ -262,6 +316,28 @@ export default function FamilyScreen() {
 }
 
 const styles = StyleSheet.create({
+  inviteBox: {
+    backgroundColor: palette.cream100,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  inviteLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: palette.ink500,
+    letterSpacing: 1,
+  },
+  inviteCode: {
+    fontSize: 30,
+    fontWeight: '700',
+    letterSpacing: 4,
+    color: palette.ink900,
+    marginVertical: 4,
+  },
+  inviteHint: { fontSize: 12, color: palette.ink500 },
+  inviteActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  inviteBtn: { flex: 1 },
   sectionLabel: { fontSize: 11, fontWeight: '700', color: palette.ink500, letterSpacing: 1 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   linkText: { fontSize: 13, color: palette.sage600, fontWeight: '600' },
