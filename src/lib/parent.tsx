@@ -48,6 +48,15 @@ const ParentContext = createContext<ParentState>({
   refresh: async () => {},
 });
 
+/** Cheap identity check: same rows, same versions, same order. */
+function sameParents(a: ParentRow[], b: ParentRow[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].id !== b[i].id || a[i].updated_at !== b[i].updated_at) return false;
+  }
+  return true;
+}
+
 export function ParentProvider({ children }: { children: ReactNode }) {
   const { familyId } = useFamily();
   const dataVersion = useDataVersion();
@@ -76,7 +85,12 @@ export function ParentProvider({ children }: { children: ReactNode }) {
     const rows = (await list('parents', { family_id: familyId }, {
       orderBy: 'created_at ASC',
     })) as ParentRow[];
-    setParents(rows);
+    // list() returns fresh objects every call, so assigning unconditionally gave
+    // `parents` — and therefore `currentParent` — a new identity on every sync
+    // tick. currentParent sits in the dependency array of nearly every screen's
+    // load(), so that churn re-ran all of them for no reason. Only replace state
+    // when the rows have actually changed.
+    setParents((prev) => (sameParents(prev, rows) ? prev : rows));
     setLoading(false);
   }, [familyId]);
 

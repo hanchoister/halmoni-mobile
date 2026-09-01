@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View, ViewStyle } from 'react-native';
 
+import { SyncBanner } from '@/components/ui/sync-banner';
 import { palette, spacing } from '@/lib/theme';
 
 export function Screen({
@@ -18,7 +19,10 @@ export function Screen({
 }) {
   if (!scroll) {
     return (
-      <View style={[styles.container, padded && styles.padded, style]}>{children}</View>
+      <View style={[styles.container, padded && styles.padded, style]}>
+        <SyncBanner />
+        {children}
+      </View>
     );
   }
   return (
@@ -31,6 +35,7 @@ export function Screen({
         contentContainerStyle={[padded && styles.padded, style]}
         refreshControl={refreshControl}
         keyboardShouldPersistTaps="handled">
+        <SyncBanner />
         {children}
       </ScrollView>
     </KeyboardAvoidingView>

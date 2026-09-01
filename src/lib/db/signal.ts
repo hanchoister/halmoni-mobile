@@ -7,11 +7,28 @@
 import { useSyncExternalStore } from 'react';
 
 let version = 0;
+let scheduled = false;
 const listeners = new Set<() => void>();
 
+// Bursts are the normal case, not the exception: realtime delivers one event
+// per ROW, so saving a medication (which writes ~90 days of doses) echoes back
+// as hundreds of separate events. Notifying per event meant every screen re-ran
+// its entire load() hundreds of times in a few hundred milliseconds, which React
+// eventually kills with "Maximum update depth exceeded".
+//
+// Collapsing a burst into one notification is safe because the signal carries no
+// payload — subscribers re-read from SQLite, so they only ever need to know
+// "something changed", not what or how many times.
+const COALESCE_MS = 50;
+
 export function bumpDataVersion() {
-  version += 1;
-  for (const l of listeners) l();
+  if (scheduled) return;
+  scheduled = true;
+  setTimeout(() => {
+    scheduled = false;
+    version += 1;
+    for (const l of listeners) l();
+  }, COALESCE_MS);
 }
 
 function subscribe(l: () => void) {
