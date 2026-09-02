@@ -14,8 +14,9 @@ import { Button } from '@/components/ui/button';
 import { ChipInput } from '@/components/ui/chip-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Field, Input } from '@/components/ui/field';
+import { RepeatableRows } from '@/components/ui/repeatable-rows';
 import { Screen } from '@/components/ui/screen';
-import type { DnrStatus } from '@/lib/parent';
+import type { DnrStatus, IceContact } from '@/lib/parent';
 import { useParents } from '@/lib/parent';
 import { writeRow } from '@/lib/sync/write-path';
 import { palette, radius, spacing } from '@/lib/theme';
@@ -43,6 +44,17 @@ export default function EditParentScreen() {
   const [proxyName, setProxyName] = useState('');
   const [proxyPhone, setProxyPhone] = useState('');
   const [proxyRelation, setProxyRelation] = useState('');
+  const [ice, setIce] = useState<IceContact[]>([]);
+  const [pharmacyName, setPharmacyName] = useState('');
+  const [pharmacyPhone, setPharmacyPhone] = useState('');
+  const [pharmacyAddress, setPharmacyAddress] = useState('');
+  const [doctorName, setDoctorName] = useState('');
+  const [doctorPhone, setDoctorPhone] = useState('');
+  const [insProvider, setInsProvider] = useState('');
+  const [insMemberId, setInsMemberId] = useState('');
+  const [insGroupId, setInsGroupId] = useState('');
+  const [insPlanName, setInsPlanName] = useState('');
+  const [insPhone, setInsPhone] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -58,6 +70,17 @@ export default function EditParentScreen() {
     setProxyName(parent.healthcare_proxy?.name ?? '');
     setProxyPhone(parent.healthcare_proxy?.phone ?? '');
     setProxyRelation(parent.healthcare_proxy?.relation ?? '');
+    setIce(parent.ice_contacts ?? []);
+    setPharmacyName(parent.pharmacy?.name ?? '');
+    setPharmacyPhone(parent.pharmacy?.phone ?? '');
+    setPharmacyAddress(parent.pharmacy?.address ?? '');
+    setDoctorName(parent.primary_doctor?.name ?? '');
+    setDoctorPhone(parent.primary_doctor?.phone ?? '');
+    setInsProvider(parent.insurance?.provider ?? '');
+    setInsMemberId(parent.insurance?.memberId ?? '');
+    setInsGroupId(parent.insurance?.groupId ?? '');
+    setInsPlanName(parent.insurance?.planName ?? '');
+    setInsPhone(parent.insurance?.phone ?? '');
   }, [parent]);
 
   if (!parent) {
@@ -98,6 +121,33 @@ export default function EditParentScreen() {
         preferences: preferences.trim() || null,
         dnr_status: dnr,
         healthcare_proxy: proxy,
+        // Same rule throughout: a record with no name is noise, not data. Drop
+        // half-filled rows rather than storing a phone number attached to
+        // nobody — on an emergency screen that is worse than a blank.
+        ice_contacts: ice.filter((c) => c.name.trim()).map((c) => ({
+          name: c.name.trim(),
+          relation: c.relation.trim(),
+          phone: c.phone.trim(),
+        })),
+        pharmacy: pharmacyName.trim()
+          ? {
+              name: pharmacyName.trim(),
+              phone: pharmacyPhone.trim(),
+              ...(pharmacyAddress.trim() ? { address: pharmacyAddress.trim() } : {}),
+            }
+          : null,
+        primary_doctor: doctorName.trim()
+          ? { name: doctorName.trim(), phone: doctorPhone.trim() }
+          : null,
+        insurance: insProvider.trim()
+          ? {
+              provider: insProvider.trim(),
+              memberId: insMemberId.trim(),
+              ...(insGroupId.trim() ? { groupId: insGroupId.trim() } : {}),
+              ...(insPlanName.trim() ? { planName: insPlanName.trim() } : {}),
+              ...(insPhone.trim() ? { phone: insPhone.trim() } : {}),
+            }
+          : null,
       });
       router.back();
     } catch (err) {
@@ -179,6 +229,86 @@ export default function EditParentScreen() {
       </Field>
       <Field label="Healthcare proxy — relation">
         <Input value={proxyRelation} onChangeText={setProxyRelation} placeholder="Daughter" />
+      </Field>
+
+      <RepeatableRows<IceContact>
+        label="Emergency contacts"
+        hint="Who to call first. Shown on the emergency card, in this order."
+        rows={ice}
+        setRows={setIce}
+        blank={() => ({ name: '', relation: '', phone: '' })}
+        addLabel="+ Add a contact"
+        renderRow={(row, update) => (
+          <>
+            <Input
+              value={row.name}
+              onChangeText={(v) => update({ ...row, name: v })}
+              placeholder="Name"
+            />
+            <Input
+              value={row.relation}
+              onChangeText={(v) => update({ ...row, relation: v })}
+              placeholder="Relation (daughter, neighbour…)"
+            />
+            <Input
+              value={row.phone}
+              onChangeText={(v) => update({ ...row, phone: v })}
+              placeholder="Phone"
+              keyboardType="phone-pad"
+            />
+          </>
+        )}
+      />
+
+      <Text style={styles.sectionLabel}>PHARMACY</Text>
+      <Field label="Name">
+        <Input value={pharmacyName} onChangeText={setPharmacyName} placeholder="Boots, High St" />
+      </Field>
+      <Field label="Phone">
+        <Input
+          value={pharmacyPhone}
+          onChangeText={setPharmacyPhone}
+          placeholder="Phone"
+          keyboardType="phone-pad"
+        />
+      </Field>
+      <Field label="Address">
+        <Input value={pharmacyAddress} onChangeText={setPharmacyAddress} placeholder="Optional" />
+      </Field>
+
+      <Text style={styles.sectionLabel}>PRIMARY DOCTOR</Text>
+      <Field label="Name">
+        <Input value={doctorName} onChangeText={setDoctorName} placeholder="Dr Okafor" />
+      </Field>
+      <Field label="Phone">
+        <Input
+          value={doctorPhone}
+          onChangeText={setDoctorPhone}
+          placeholder="Phone"
+          keyboardType="phone-pad"
+        />
+      </Field>
+
+      <Text style={styles.sectionLabel}>INSURANCE</Text>
+      <Field label="Provider">
+        <Input value={insProvider} onChangeText={setInsProvider} placeholder="Provider name" />
+      </Field>
+      <Field label="Member ID">
+        <Input value={insMemberId} onChangeText={setInsMemberId} placeholder="Member ID" />
+      </Field>
+      <Field label="Group ID">
+        <Input value={insGroupId} onChangeText={setInsGroupId} placeholder="Optional" />
+      </Field>
+      <Field label="Plan name">
+        <Input value={insPlanName} onChangeText={setInsPlanName} placeholder="Optional" />
+      </Field>
+      <Field label="Phone">
+        <Input
+          value={insPhone}
+          onChangeText={setInsPhone}
+          placeholder="Optional"
+          keyboardType="phone-pad"
+        />
       </Field>
 
       <Button title="Save" onPress={save} busy={saving} disabled={!name.trim()} />

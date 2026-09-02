@@ -11,6 +11,8 @@ const CURRENT_PARENT_STORAGE_KEY = 'halmoni:currentParentId';
 // resuscitation preference means.
 export type DnrStatus = 'unknown' | 'yes' | 'no' | 'see_document';
 
+export type IceContact = { name: string; relation: string; phone: string };
+
 export type HealthcareProxy = {
   name: string;
   phone: string;
@@ -29,7 +31,7 @@ export type ParentRow = {
   allergies: string[];
   preferences: string | null;
   blood_type: string | null;
-  ice_contacts: { name: string; relation: string; phone: string }[];
+  ice_contacts: IceContact[];
   pharmacy: { name: string; phone: string; address?: string } | null;
   primary_doctor: { name: string; phone: string } | null;
   insurance: {
