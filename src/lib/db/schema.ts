@@ -6,7 +6,7 @@
 // JSON-shaped columns (arrays, objects) are stored as TEXT and parsed via the
 // repository. This keeps SQLite ↔ Postgres alignment simple.
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 // Ordered so foreign-key-referenced tables come first.
 export const CREATE_TABLE_SQL: string[] = [
@@ -49,6 +49,11 @@ export const CREATE_TABLE_SQL: string[] = [
     pharmacy       TEXT,
     primary_doctor TEXT,
     insurance      TEXT,
+    -- Emergency fields. Previously pulled from the server and silently dropped
+    -- because the mirror had nowhere to put them, so a resuscitation preference
+    -- set on the web was invisible to whoever was holding the phone.
+    dnr_status        TEXT,
+    healthcare_proxy  TEXT,
     created_at     TEXT NOT NULL,
     updated_at     TEXT NOT NULL,
     deleted_at     TEXT
@@ -260,7 +265,15 @@ export const TABLE_COLUMNS: Record<string, Set<string>> = (() => {
 
 // Columns that store JSON in TEXT and need parse/stringify at the repository boundary.
 export const JSON_COLUMNS: Record<string, string[]> = {
-  parents: ['conditions', 'allergies', 'ice_contacts', 'pharmacy', 'primary_doctor', 'insurance'],
+  parents: [
+    'conditions',
+    'allergies',
+    'ice_contacts',
+    'pharmacy',
+    'primary_doctor',
+    'insurance',
+    'healthcare_proxy',
+  ],
   medications: ['schedule'],
   symptoms: ['possible_med_links'],
 };

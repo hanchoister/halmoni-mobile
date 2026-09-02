@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "tables": {
     "families": [
       "id",
@@ -37,6 +37,8 @@
       "pharmacy",
       "primary_doctor",
       "insurance",
+      "dnr_status",
+      "healthcare_proxy",
       "created_at!",
       "updated_at!",
       "deleted_at"

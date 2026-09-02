@@ -7,6 +7,17 @@ import { useFamily } from '@/lib/family';
 
 const CURRENT_PARENT_STORAGE_KEY = 'halmoni:currentParentId';
 
+// Mirrors the web app's shape exactly so the two never disagree about what a
+// resuscitation preference means.
+export type DnrStatus = 'unknown' | 'yes' | 'no' | 'see_document';
+
+export type HealthcareProxy = {
+  name: string;
+  phone: string;
+  relation: string;
+  email?: string;
+};
+
 export type ParentRow = {
   id: string;
   family_id: string;
@@ -28,6 +39,8 @@ export type ParentRow = {
     planName?: string;
     phone?: string;
   } | null;
+  dnr_status: DnrStatus | null;
+  healthcare_proxy: HealthcareProxy | null;
   created_at: string;
   updated_at: string;
 };

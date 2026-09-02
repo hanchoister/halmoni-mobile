@@ -13,6 +13,15 @@ import { calcAge } from '@/lib/format';
 import { useParents } from '@/lib/parent';
 import { palette, radius, spacing } from '@/lib/theme';
 
+// Spelled out rather than shown raw: "no" meaning "full code" is exactly the
+// kind of ambiguity that must not exist on an emergency screen.
+const DNR_LABEL: Record<string, string> = {
+  unknown: 'Not known',
+  no: 'Full code — resuscitate',
+  yes: 'DNR — do not resuscitate',
+  see_document: 'See advance directive',
+};
+
 export default function ProfileScreen() {
   const { parents, currentParent, setCurrentParentId } = useParents();
   const [exporting, setExporting] = useState(false);
@@ -83,6 +92,47 @@ export default function ProfileScreen() {
               <Pill key={a} label={`⚠ ${a}`} tone="terracotta" />
             ))}
           </View>
+        </Card>
+      )}
+
+      {(currentParent.dnr_status || currentParent.healthcare_proxy) && (
+        <Card>
+          <Text style={styles.sectionLabel}>ADVANCE WISHES</Text>
+          {currentParent.dnr_status && (
+            <View style={styles.wishRow}>
+              <Text style={styles.wishLabel}>Resuscitation</Text>
+              <Text
+                style={[
+                  styles.wishValue,
+                  currentParent.dnr_status === 'yes' && styles.wishValueAlert,
+                ]}>
+                {DNR_LABEL[currentParent.dnr_status] ?? currentParent.dnr_status}
+              </Text>
+            </View>
+          )}
+          {currentParent.healthcare_proxy?.name && (
+            <View style={styles.wishRow}>
+              <Text style={styles.wishLabel}>Healthcare proxy</Text>
+              <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                <Text style={styles.wishValue}>
+                  {currentParent.healthcare_proxy.name}
+                  {currentParent.healthcare_proxy.relation
+                    ? ` · ${currentParent.healthcare_proxy.relation}`
+                    : ''}
+                </Text>
+                {currentParent.healthcare_proxy.phone ? (
+                  <Pressable
+                    onPress={() =>
+                      Linking.openURL(`tel:${currentParent.healthcare_proxy!.phone}`)
+                    }>
+                    <Text style={styles.phoneLink}>
+                      📞 {currentParent.healthcare_proxy.phone}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
+          )}
         </Card>
       )}
 
@@ -166,6 +216,11 @@ export default function ProfileScreen() {
         onPress={onShareCareKit}
         busy={exporting}
       />
+      <Button
+        title="Edit details"
+        onPress={() => router.push(`/parent/edit/${currentParent.id}`)}
+        variant="secondary"
+      />
       <Button title="+ Add another parent" onPress={() => router.push('/parent/new')} variant="secondary" />
       <Button title="Account & sign out" onPress={() => router.push('/account')} variant="secondary" />
     </Screen>
@@ -173,6 +228,16 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
+  wishRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    paddingVertical: 6,
+  },
+  wishLabel: { fontSize: 13, color: palette.ink500 },
+  wishValue: { fontSize: 13, fontWeight: '700', color: palette.ink900, textAlign: 'right' },
+  wishValueAlert: { color: palette.terracotta500 },
   headerRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
   name: { fontSize: 24, fontWeight: '800', color: palette.ink900 },
   sub: { fontSize: 13, color: palette.ink500, marginTop: 4 },
