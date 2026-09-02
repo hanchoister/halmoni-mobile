@@ -74,6 +74,7 @@ function AppStack() {
       <Stack.Screen name="patterns" options={{ title: 'Possible patterns' }} />
       <Stack.Screen name="account" options={{ title: 'Account' }} />
       <Stack.Screen name="parent/new" options={{ title: 'Add parent', presentation: 'modal' }} />
+      <Stack.Screen name="parent/edit/[id]" options={{ title: 'Edit details', presentation: 'modal' }} />
       <Stack.Screen name="handoff/new" options={{ title: 'Hand off', presentation: 'modal' }} />
     </Stack>
   );

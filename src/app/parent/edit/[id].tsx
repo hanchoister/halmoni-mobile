@@ -21,6 +21,21 @@ import { useParents } from '@/lib/parent';
 import { writeRow } from '@/lib/sync/write-path';
 import { palette, radius, spacing } from '@/lib/theme';
 
+// Advance-care fields — resuscitation preference and healthcare proxy — are
+// hidden for now. The first users are siblings coordinating a parent's
+// day-to-day care, and asking them to record a DNR status is heavy and
+// premature for that relationship.
+//
+// Revisit when expanding to professional caregivers and senior-care facilities,
+// where these are routine intake fields rather than a difficult family
+// conversation.
+//
+// Deliberately a flag rather than a deletion: the columns, the sync, the save
+// path and the profile display all stay wired, so re-enabling is this one line.
+// Values already set (e.g. from the web app) still show on the profile and are
+// preserved on save.
+const SHOW_ADVANCE_CARE_FIELDS = false;
+
 const DNR_OPTIONS: { value: DnrStatus; label: string }[] = [
   { value: 'unknown', label: 'Not known' },
   { value: 'no', label: 'Full code' },
@@ -119,8 +134,12 @@ export default function EditParentScreen() {
         conditions,
         allergies,
         preferences: preferences.trim() || null,
-        dnr_status: dnr,
-        healthcare_proxy: proxy,
+        // When the section is hidden these keys are omitted entirely, so the
+        // spread above preserves whatever is already stored instead of
+        // flattening a real value to the form's default.
+        ...(SHOW_ADVANCE_CARE_FIELDS
+          ? { dnr_status: dnr, healthcare_proxy: proxy }
+          : {}),
         // Same rule throughout: a record with no name is noise, not data. Drop
         // half-filled rows rather than storing a phone number attached to
         // nobody — on an emergency screen that is worse than a blank.
@@ -195,6 +214,8 @@ export default function EditParentScreen() {
         />
       </Field>
 
+      {SHOW_ADVANCE_CARE_FIELDS && (
+        <>
       <Text style={styles.sectionLabel}>IN AN EMERGENCY</Text>
       <Text style={styles.sub}>
         Shown first on the emergency card. Leave as &ldquo;Not known&rdquo; rather than
@@ -230,6 +251,8 @@ export default function EditParentScreen() {
       <Field label="Healthcare proxy — relation">
         <Input value={proxyRelation} onChangeText={setProxyRelation} placeholder="Daughter" />
       </Field>
+        </>
+      )}
 
       <RepeatableRows<IceContact>
         label="Emergency contacts"

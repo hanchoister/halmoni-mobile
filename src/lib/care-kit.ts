@@ -227,6 +227,10 @@ export async function shareCareKit(parent: ParentRow): Promise<void> {
     .from('medications')
     .select('id,name,dose,purpose,schedule')
     .eq('parent_id', parent.id)
+    // Deletes are tombstones, not row removals. Without this the PDF listed
+    // discontinued medications alongside current ones — on an emergency care
+    // kit that could get someone dosed with a drug they were taken off.
+    .is('deleted_at', null)
     .order('name', { ascending: true });
   const meds = (medsData as MedForKit[] | null) ?? [];
 

@@ -49,6 +49,9 @@ export function MeProvider({ children }: { children: ReactNode }) {
       .from('family_members')
       .select('*')
       .eq('family_id', familyId)
+      // Removed members are tombstoned, not deleted; they should not keep
+      // appearing in the sibling list or as a hand-off target.
+      .is('deleted_at', null)
       .order('created_at', { ascending: true });
     setSiblings((data as FamilyMember[] | null) ?? []);
     setLoading(false);

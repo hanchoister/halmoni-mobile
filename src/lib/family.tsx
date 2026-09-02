@@ -31,6 +31,9 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
       .from('family_members')
       .select('family_id')
       .eq('user_id', session.user.id)
+      // A removed member's row is soft-deleted, so without this they would keep
+      // resolving into the family they were removed from.
+      .is('deleted_at', null)
       .limit(1);
     setFamilyId(data && data.length > 0 ? data[0].family_id : null);
     setLoading(false);
