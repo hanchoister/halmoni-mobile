@@ -272,7 +272,27 @@ export const demoSupabase = {
     if (fn === 'create_invite') {
       return { data: 'DEMO-INVITE-CODE', error: null };
     }
-    return { data: null, error: null };
+    // Everything else deliberately refuses rather than pretending.
+    //
+    // This used to be `return { data: null, error: null }` — a silent success
+    // for work that had not happened. "Create family" and "Join family"
+    // reported no error and dropped you back into the sample family with
+    // nothing created, which reads as the button being broken. Worse,
+    // `delete_my_account` claimed to have deleted an account and then wiped
+    // local data, so the demo appeared to honour a destructive action it had
+    // not performed. A demo that looks like it works while nothing happens is
+    // the failure mode this app has already decided is worse than no demo.
+    const refusals: Record<string, string> = {
+      create_family:
+        'The demo is a fixed sample family. Creating your own needs a real account.',
+      accept_invite:
+        'The demo is a fixed sample family. Joining one needs a real account.',
+      delete_my_account: 'There is nothing to delete — the demo is not a real account.',
+    };
+    return {
+      data: null,
+      error: { message: refusals[fn] ?? `"${fn}" is not available in the demo.` },
+    };
   },
   // Referenced from the demo-fixtures constants — re-export here so demo
   // components can access them without importing fixtures directly.
