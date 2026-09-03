@@ -57,8 +57,7 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true,
-      "baseUrl": "/demo"
+      "reactCompiler": true
     },
     "extra": {
       "router": {},

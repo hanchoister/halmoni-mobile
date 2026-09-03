@@ -53,3 +53,26 @@ declaration: *"Does your app use encryption?"* → **Yes**. *"Does it qualify fo
 any of the exemptions?"* → **Yes**, the standard-algorithms exemption. Answering
 "No" to the first question would contradict `app.json` and is inaccurate — the
 app plainly does encrypt.
+
+---
+
+# Addendum: `experiments.baseUrl`
+
+Removed from `app.json` on 2026-09-02. It was set to `/demo` to serve the web
+demo build under `halmoni.uk/demo`.
+
+The App Store checklist flagged it as "should be inert on native — but verify,
+don't assume". Verified, and it was **not** inert: with `baseUrl` set, the iOS
+bundle embedded asset paths like `/demo/assets/node_modules/@expo-google-fonts/…`
+and `classic-assets.eascdn.net/~assets/demo/assets/…`. Removing it dropped
+`/demo` from the native bundle from 3 occurrences to 0 and left asset paths
+clean, which establishes cause rather than correlation.
+
+The risk was fonts or images failing to resolve in a release build — the kind of
+fault that appears only after a TestFlight round trip.
+
+**To rebuild the web demo**, restore `experiments.baseUrl: "/demo"`, run the web
+export, and remove it again before any native build. Better still: move
+`app.json` to `app.config.js` and set it only when `process.env.EXPO_PLATFORM`
+is web, so the two builds cannot interfere. Not done now because Halmoni is
+mobile-only and the web demo is a stale marketing artifact.
