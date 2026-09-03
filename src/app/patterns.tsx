@@ -27,7 +27,7 @@ type SymptomRow = {
 const TIER_LABEL: Record<FindingTier, string> = {
   urgent: 'Call the doctor today',
   high: 'Mention at the next visit',
-  low: 'Weak timing overlap',
+  low: 'Probably nothing — mention if it persists',
 };
 
 export default function PatternsScreen() {
@@ -118,16 +118,17 @@ export default function PatternsScreen() {
     <Screen refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}>
       <Card tint="cream">
         <Text style={styles.disclaimer}>
-          These are timing patterns, not medical advice. Halmoni flags symptoms that were logged
-          near the start of a medication or linked to it by someone in the family. The doctor is
-          the one who can tell you whether a match is real.
+          Halmoni is not telling you what caused anything, and cannot. All it does is notice
+          that a symptom was logged soon after a medication started, or that someone in the
+          family linked the two. That is a reason to ask a question, not an answer. Bring these
+          to the doctor and let them judge.
         </Text>
       </Card>
 
       {findings.length === 0 ? (
         <EmptyState
           emoji="🌿"
-          title="No possible patterns"
+          title="Nothing to ask about"
           message="Nothing to review right now. Log symptoms as you notice them and they'll be matched here."
         />
       ) : (
@@ -150,11 +151,11 @@ export default function PatternsScreen() {
                 <Text style={styles.reason}>
                   {inKb
                     ? f.tier === 'low'
-                      ? 'Timing overlap — but the symptoms below aren\'t established side effects.'
+                      ? 'Started around the same time. These symptoms are not known effects of this medication.'
                       : f.tier === 'high'
-                      ? 'Matches known side effects for this medication.'
-                      : 'Matches a serious side effect. Contact the doctor promptly.'
-                    : 'Timing overlap — no side-effect data for this medication in Halmoni.'}
+                      ? 'These symptoms are listed effects of this medication. Worth raising.'
+                      : 'These symptoms are listed as serious effects of this medication. Ask the doctor promptly.'
+                    : 'Started around the same time. Halmoni has no effect data for this medication.'}
                 </Text>
               </Pressable>
               <View style={styles.symptomList}>

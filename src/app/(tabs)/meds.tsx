@@ -109,10 +109,10 @@ export default function MedsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.detectiveTitle}>
               {patternCount === 1
-                ? '1 possible side-effect pattern'
-                : `${patternCount} possible side-effect patterns`}
+                ? '1 question worth asking'
+                : `${patternCount} questions worth asking`}
             </Text>
-            <Text style={styles.detectiveSub}>Review timing overlaps with symptoms →</Text>
+            <Text style={styles.detectiveSub}>Symptoms logged soon after a medication started →</Text>
           </View>
         </Pressable>
       )}
