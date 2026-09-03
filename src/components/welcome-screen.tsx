@@ -4,11 +4,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { palette, radius, spacing } from '@/lib/theme';
 
 type Props = {
-  onTryDemo: () => void;
+  /**
+   * Omitted in release builds, which hides the demo entry point entirely.
+   * A tester who wandered into demo mode would log doses, see them appear, and
+   * reasonably conclude the app works — while nothing was saved or shared with
+   * their family. For a care app that is a worse outcome than not offering a
+   * demo at all.
+   */
+  onTryDemo?: () => void;
   onLogIn: () => void;
 };
 
 export function WelcomeScreen({ onTryDemo, onLogIn }: Props) {
+  // With no demo on offer, signing in IS the primary action and should look it.
+  const loginIsPrimary = !onTryDemo;
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
@@ -46,20 +55,29 @@ export function WelcomeScreen({ onTryDemo, onLogIn }: Props) {
         </View>
 
         <View style={styles.actions}>
-          <Pressable
-            onPress={onTryDemo}
-            style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}>
-            <Text style={styles.primaryBtnText}>See the live demo</Text>
-            <Text style={styles.primaryBtnSub}>
-              Explore with the sample Reyes family — nothing you do is saved.
-            </Text>
-          </Pressable>
+          {onTryDemo ? (
+            <Pressable
+              onPress={onTryDemo}
+              style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}>
+              <Text style={styles.primaryBtnText}>See the live demo</Text>
+              <Text style={styles.primaryBtnSub}>
+                Explore with the sample Reyes family — nothing you do is saved.
+              </Text>
+            </Pressable>
+          ) : null}
 
           <Pressable
             onPress={onLogIn}
-            style={({ pressed }) => [styles.secondaryBtn, pressed && styles.pressed]}>
-            <Text style={styles.secondaryBtnText}>Log in / create account</Text>
-            <Text style={styles.secondaryBtnSub}>Use Halmoni for your own family.</Text>
+            style={({ pressed }) => [
+              loginIsPrimary ? styles.primaryBtn : styles.secondaryBtn,
+              pressed && styles.pressed,
+            ]}>
+            <Text style={loginIsPrimary ? styles.primaryBtnText : styles.secondaryBtnText}>
+              Log in / create account
+            </Text>
+            <Text style={loginIsPrimary ? styles.primaryBtnSub : styles.secondaryBtnSub}>
+              Use Halmoni for your own family.
+            </Text>
           </Pressable>
         </View>
 
