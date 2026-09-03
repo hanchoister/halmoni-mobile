@@ -9,7 +9,10 @@
 // The first run of this caught a real leak: ids and emails were scrubbed, but
 // "Elena" and "Donepezil" survived inside the Error message. Free text is now
 // dropped entirely.
-const target = process.argv[2] || '/tmp/scrub/sentry-scrub.js';
+// require() resolves a relative path against this file, not the working
+// directory, so resolve it explicitly against cwd.
+const path = require('path');
+const target = path.resolve(process.cwd(), process.argv[2] || '.scrub-build/sentry-scrub.js');
 const { scrubEvent, scrubBreadcrumb } = require(target);
 
 // A realistic worst case: everything this app must never send.

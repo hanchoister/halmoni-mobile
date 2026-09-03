@@ -57,7 +57,9 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "verify:scrub": "tsc src/lib/reliability/sentry-scrub.ts --outDir .scrub-build --module commonjs --target es2020 --skipLibCheck && node scripts/verify-sentry-scrubbing.js .scrub-build/sentry-scrub.js",
+    "verify": "tsc --noEmit && expo lint && npm run verify:scrub"
   },
   "private": true
 }

@@ -1,0 +1,30 @@
+# Types, lint, and the Sentry scrubbing check on every push and PR.
+#
+# The scrubbing check is here for a specific reason. It failed the first time it
+# was ever run: ids and emails were redacted but a parent's name and a
+# medication survived inside an Error message. That class of mistake is silent —
+# nothing crashes, events just quietly carry health data to a third party — so
+# it needs a machine watching it, not a memory.
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Lint
+        run: npx expo lint
+      - name: Sentry scrubbing must not leak PHI
+        run: npm run verify:scrub
