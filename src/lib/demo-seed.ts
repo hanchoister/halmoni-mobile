@@ -25,6 +25,14 @@ export async function seedDemoDataIntoDb(): Promise<void> {
   const now = new Date().toISOString();
   for (const t of SYNCABLE_TABLES) {
     const rows = (store[t] ?? []).map((r: any) => ({
+      // Every mirror table declares created_at NOT NULL, but the generated
+      // fixtures — med_doses especially, which are built in a loop — do not set
+      // it. The insert then failed the constraint, wa-sqlite reported it as the
+      // unhelpful "Error finalizing statement", and because the seed was called
+      // as `void seedDemoDataIntoDb()` the rejection was swallowed. The demo
+      // came up with an empty mirror and every tab showed its "nothing here
+      // yet" state.
+      created_at: r.created_at ?? r.scheduled_at ?? now,
       updated_at: r.updated_at ?? r.created_at ?? now,
       ...r,
     }));
