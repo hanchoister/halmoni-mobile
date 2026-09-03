@@ -25,6 +25,7 @@ import { MeProvider, useMe } from '@/lib/me';
 import { ParentProvider } from '@/lib/parent';
 import { beatPresence } from '@/lib/presence';
 import { ErrorBoundary } from '@/lib/reliability/error-boundary';
+import { initSentry } from '@/lib/reliability/sentry';
 import { BiometricLockGate } from '@/lib/security/lock-gate';
 import { SyncProvider } from '@/lib/sync';
 import { startRealtime, stopRealtime } from '@/lib/sync/realtime';
@@ -169,6 +170,10 @@ function RootNavigator() {
     />
   );
 }
+
+// Before anything else renders, so an early crash is still captured — and so
+// the scrubbing in initSentry() is in place before any event can be sent.
+initSentry();
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({

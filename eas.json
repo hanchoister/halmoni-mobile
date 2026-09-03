@@ -13,7 +13,8 @@
       "env": {
         "EXPO_PUBLIC_LANDING_URL": "https://halmoni.app",
         "EXPO_PUBLIC_SUPABASE_URL": "https://wyovvbnlhyqfmnvsgket.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable_P2L_Trg6gFipDixjIPH5qA_wXEKVRsW"
+        "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable_P2L_Trg6gFipDixjIPH5qA_wXEKVRsW",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://99e2cb90c14b55c2e01e2d87012bf440@o4512024748163072.ingest.us.sentry.io/4512024751046656"
       },
       "channel": "development"
     },
@@ -25,7 +26,8 @@
       "env": {
         "EXPO_PUBLIC_LANDING_URL": "https://halmoni.app",
         "EXPO_PUBLIC_SUPABASE_URL": "https://wyovvbnlhyqfmnvsgket.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable_P2L_Trg6gFipDixjIPH5qA_wXEKVRsW"
+        "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable_P2L_Trg6gFipDixjIPH5qA_wXEKVRsW",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://99e2cb90c14b55c2e01e2d87012bf440@o4512024748163072.ingest.us.sentry.io/4512024751046656"
       },
       "channel": "preview"
     },
@@ -34,7 +36,8 @@
       "env": {
         "EXPO_PUBLIC_LANDING_URL": "https://halmoni.app",
         "EXPO_PUBLIC_SUPABASE_URL": "https://wyovvbnlhyqfmnvsgket.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable_P2L_Trg6gFipDixjIPH5qA_wXEKVRsW"
+        "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable_P2L_Trg6gFipDixjIPH5qA_wXEKVRsW",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://99e2cb90c14b55c2e01e2d87012bf440@o4512024748163072.ingest.us.sentry.io/4512024751046656"
       },
       "channel": "production"
     }
