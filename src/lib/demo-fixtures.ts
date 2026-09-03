@@ -240,7 +240,10 @@ export function buildDemoStore(): DemoStore {
     const startedDaysAgo = Math.floor(
       (Date.now() - new Date(med.started_at as string).getTime()) / 86400000,
     );
-    const historyDays = Math.min(startedDaysAgo, 60);
+    // 21 days, not 60. The Timeline still reads as a full history, and it cuts
+    // the demo's seed from ~380 rows to ~140 — the difference between the web
+    // demo being usable on arrival and looking empty while it loads.
+    const historyDays = Math.min(startedDaysAgo, 21);
     for (let dayOffset = historyDays; dayOffset >= -3; dayOffset--) {
       med.schedule.forEach((slot, slotIdx) => {
         const [hh, mm] = slot.time.split(':').map((n) => parseInt(n, 10));

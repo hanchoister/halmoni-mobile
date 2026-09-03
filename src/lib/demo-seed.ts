@@ -3,7 +3,7 @@
 // Idempotent: wipes the syncable tables first so re-entering demo starts fresh.
 
 import { getDb } from '@/lib/db/client';
-import { upsertRows } from '@/lib/db/repository';
+import { bulkInsertRows } from '@/lib/db/repository';
 import { SYNCABLE_TABLES } from '@/lib/db/schema';
 import { buildDemoStore } from '@/lib/demo-fixtures';
 import { bumpDataVersion } from '@/lib/db/signal';
@@ -36,7 +36,7 @@ export async function seedDemoDataIntoDb(): Promise<void> {
       updated_at: r.updated_at ?? r.created_at ?? now,
       ...r,
     }));
-    await upsertRows(t, rows);
+    await bulkInsertRows(t, rows);
   }
   seeded = true;
   bumpDataVersion();

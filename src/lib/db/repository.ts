@@ -84,6 +84,43 @@ export async function upsertRow(table: SyncableTable, row: Row): Promise<void> {
   await db.runAsync(sql, ...cols.map((c) => encoded[c] ?? null));
 }
 
+/**
+ * Chunked multi-row INSERT, for seeding a table in one go.
+ *
+ * upsertRows() issues one statement per row. That is right for a sync pull —
+ * rows trickle in and each is independently recoverable — but it is the wrong
+ * shape for loading a fixture set: the demo seeds ~380 rows, and 380 round
+ * trips through SQLite-compiled-to-WebAssembly left halmoni.uk/demo showing
+ * "No parent yet" for 15-30 seconds while a visitor decided the product was
+ * broken.
+ *
+ * Deliberately NOT used by the sync path, which keeps its per-row error
+ * isolation. Assumes the caller has already cleared the table.
+ */
+export async function bulkInsertRows(table: SyncableTable, rows: Row[]): Promise<void> {
+  if (rows.length === 0) return;
+  const db = await getDb();
+  const encoded = rows.map((r) => encode(table, r));
+  // Union of columns: fixture rows omit keys that others set, and every tuple
+  // in one statement has to bind the same columns. Missing values become null.
+  const cols = [...new Set(encoded.flatMap((r) => Object.keys(r)))];
+  // SQLite caps bound parameters per statement (999 by default), so size each
+  // chunk by column count and leave headroom.
+  const perChunk = Math.max(1, Math.floor(900 / cols.length));
+  const tuple = `(${cols.map(() => '?').join(', ')})`;
+  await db.withTransactionAsync(async () => {
+    for (let i = 0; i < encoded.length; i += perChunk) {
+      const chunk = encoded.slice(i, i + perChunk);
+      const sql =
+        `INSERT OR REPLACE INTO ${table} (${cols.join(', ')}) ` +
+        `VALUES ${chunk.map(() => tuple).join(', ')}`;
+      const args: unknown[] = [];
+      for (const r of chunk) for (const c of cols) args.push(r[c] ?? null);
+      await db.runAsync(sql, ...(args as any[]));
+    }
+  });
+}
+
 export async function upsertRows(table: SyncableTable, rows: Row[]): Promise<void> {
   if (rows.length === 0) return;
   const db = await getDb();
