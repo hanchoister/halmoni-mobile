@@ -82,7 +82,7 @@ export function WelcomeScreen({ onTryDemo, onLogIn }: Props) {
           </Pressable>
         </View>
 
-        <Text style={styles.footer}>Built by Hana Choi · halmoni.uk</Text>
+        <Text style={styles.footer}>Built by Hana Choi · halmoni.app</Text>
       </View>
     </SafeAreaView>
   );

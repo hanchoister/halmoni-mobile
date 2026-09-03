@@ -16,7 +16,7 @@ version `1.0.0` (app.json).
       cascades family data — plus a decision on what happens to a family when
       its **owner** deletes (orphaned families are the trap here).
 - [ ] **Privacy policy URL.** Required in App Store Connect, and required to be
-      reachable from inside the app. `halmoni.uk` has no `/privacy` page —
+      reachable from inside the app. `halmoni.app` has no `/privacy` page —
       only `index.html`, `/demo`, and `/view`. Must be written and deployed.
 - [ ] **Privacy nutrition label.** Halmoni stores medications, symptoms,
       appointments, visit notes — Apple classes this as **Health & Fitness
@@ -40,7 +40,7 @@ version `1.0.0` (app.json).
       should be clearly a *coordination and record-keeping* tool — never
       dosing guidance. One deliberate pass over user-facing strings.
 - [ ] **`experiments.baseUrl: "/demo"`** in `app.json` exists to serve the web
-      demo build under `halmoni.uk/demo`. Confirm it has no effect on native
+      demo build under `halmoni.app/demo`. Confirm it has no effect on native
       routing in a **release** build (it shouldn't — but verify, don't assume).
 
 ## Security items — worth fixing before real users, not submission blockers
@@ -84,7 +84,7 @@ version `1.0.0` (app.json).
    can actually be verified on a real device.
 2. Account deletion — the biggest chunk of real product work, and it needs the
    owner-deletion decision made first.
-3. Privacy policy page → deploy to `halmoni.uk/privacy`.
+3. Privacy policy page → deploy to `halmoni.app/privacy`.
 4. Switch to PKCE + SecureStore while still pre-users; both get harder to
    change once real sessions exist in the wild.
 5. Screenshots and listing copy last — they churn with every UI change, so

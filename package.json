@@ -9,6 +9,7 @@
     "@noble/ciphers": "^2.3.0",
     "@noble/hashes": "^2.3.0",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@sentry/react-native": "~7.2.0",
     "@supabase/supabase-js": "^2.108.2",
     "expo": "~54.0.37",
     "expo-auth-session": "~7.0.11",

@@ -2,7 +2,7 @@ import type { StyleProp, ViewStyle } from 'react-native';
 import Svg, { Circle, G, Line, Path } from 'react-native-svg';
 
 /**
- * The Halmoni brand mark — the same drawing as the halmoni.uk header logo and
+ * The Halmoni brand mark — the same drawing as the halmoni.app header logo and
  * `favicon.svg`. It replaces the 👵 emoji, which rendered as a different face
  * on every platform and matched the brand on none of them.
  *

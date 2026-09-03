@@ -11,7 +11,7 @@
         "simulator": true
       },
       "env": {
-        "EXPO_PUBLIC_LANDING_URL": "https://halmoni.uk",
+        "EXPO_PUBLIC_LANDING_URL": "https://halmoni.app",
         "EXPO_PUBLIC_SUPABASE_URL": "https://wyovvbnlhyqfmnvsgket.supabase.co",
         "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable_P2L_Trg6gFipDixjIPH5qA_wXEKVRsW"
       },
@@ -23,7 +23,7 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_LANDING_URL": "https://halmoni.uk",
+        "EXPO_PUBLIC_LANDING_URL": "https://halmoni.app",
         "EXPO_PUBLIC_SUPABASE_URL": "https://wyovvbnlhyqfmnvsgket.supabase.co",
         "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable_P2L_Trg6gFipDixjIPH5qA_wXEKVRsW"
       },
@@ -32,7 +32,7 @@
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_LANDING_URL": "https://halmoni.uk",
+        "EXPO_PUBLIC_LANDING_URL": "https://halmoni.app",
         "EXPO_PUBLIC_SUPABASE_URL": "https://wyovvbnlhyqfmnvsgket.supabase.co",
         "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable_P2L_Trg6gFipDixjIPH5qA_wXEKVRsW"
       },

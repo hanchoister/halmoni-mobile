@@ -215,7 +215,7 @@ function buildHtml(parent: ParentRow, meds: MedForKit[]): string {
 
   <div class="footer">
     <div>Generated ${esc(generatedAt)}</div>
-    <div>halmoni.uk</div>
+    <div>halmoni.app</div>
   </div>
 </body>
 </html>

@@ -5,7 +5,7 @@ claim is **coordination** — several people holding one shared, current picture
 of a parent's care — not personal note-taking.
 
 **Halmoni is a mobile app.** Decided 2026-09-01 (`P-01`/`G0-06`): the web app
-(`tend`) retires, and `halmoni.uk` becomes a landing page. Anything that reads
+(`tend`) retires, and `halmoni.app` becomes a landing page. Anything that reads
 as "build it twice" is out of scope by definition.
 
 ---
@@ -83,7 +83,7 @@ soft-deleted table that omits `.is('deleted_at', null)`. Deleted rows coming
 back as live has shipped three times; the rule exists so it cannot be a fourth.
 
 `metro.config.js` is Expo's default plus `wasm` in `assetExts`, which the
-expo-sqlite web worker needs for the `halmoni.uk/demo` export.
+expo-sqlite web worker needs for the `halmoni.app/demo` export.
 
 **Environment** — `.env.local`, pointed at `halmoni-prod`:
 `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_KEY`, and the three

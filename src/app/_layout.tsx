@@ -155,7 +155,7 @@ function RootNavigator() {
   if (showLogin) return <LoginScreen />;
   // Demo mode is a development and marketing affordance, not a product feature.
   // It stays reachable in dev, and in the web demo build served at
-  // halmoni.uk/demo (which sets EXPO_PUBLIC_START_IN_DEMO=1), but never in a
+  // halmoni.app/demo (which sets EXPO_PUBLIC_START_IN_DEMO=1), but never in a
   // release build a tester or App Store reviewer installs.
   //
   // Reviewers get a seeded real account via the review notes instead (G2-15) —

@@ -125,7 +125,7 @@ own writing about their experience, not the parent's record. *(`P-21`.)*
 | Expo / EAS | App delivery and updates. **No care data.** | United States |
 | Apple | App Store and TestFlight distribution | Global |
 | Google Fonts | Typefaces on the landing page — the browser's request exposes the visitor's IP to Google. **No care data.** | Global |
-| Zoho | `privacy@halmoni.uk` mailbox. Receives whatever a data-subject request contains. | — |
+| Zoho | `privacy@halmoni.app` mailbox. Receives whatever a data-subject request contains. | — |
 
 ### ⚠️ Two processors the privacy policy does not currently list
 

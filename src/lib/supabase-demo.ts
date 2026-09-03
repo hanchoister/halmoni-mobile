@@ -228,7 +228,7 @@ const fakeSession = {
   expires_at: Math.floor(Date.now() / 1000) + 3600,
   user: {
     id: DEMO_USER_ID,
-    email: 'demo@halmoni.uk',
+    email: 'demo@halmoni.app',
     app_metadata: {},
     user_metadata: { name: 'Sofia (demo)' },
     aud: 'authenticated',

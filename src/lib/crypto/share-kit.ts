@@ -16,7 +16,7 @@ import type { ParentRow } from '@/lib/parent';
 import { supabase } from '@/lib/supabase';
 
 const LANDING_URL =
-  process.env.EXPO_PUBLIC_LANDING_URL?.replace(/\/$/, '') ?? 'https://halmoni.uk';
+  process.env.EXPO_PUBLIC_LANDING_URL?.replace(/\/$/, '') ?? 'https://halmoni.app';
 const BUCKET = 'share-kits';
 
 export interface ShareKitPayload {

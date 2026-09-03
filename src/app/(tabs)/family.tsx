@@ -138,7 +138,7 @@ export default function FamilyScreen() {
     const message =
       `${opener} to help our family coordinate ${parentLabel}'s care.\n\n` +
       `Join with code: ${code}\n\n` +
-      `Get the app: https://halmoni.uk`;
+      `Get the app: https://halmoni.app`;
     try {
       // The code is on screen already, so a dismissed share sheet needs no alert.
       await Share.share({ message });

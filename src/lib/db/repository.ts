@@ -90,7 +90,7 @@ export async function upsertRow(table: SyncableTable, row: Row): Promise<void> {
  * upsertRows() issues one statement per row. That is right for a sync pull —
  * rows trickle in and each is independently recoverable — but it is the wrong
  * shape for loading a fixture set: the demo seeds ~380 rows, and 380 round
- * trips through SQLite-compiled-to-WebAssembly left halmoni.uk/demo showing
+ * trips through SQLite-compiled-to-WebAssembly left halmoni.app/demo showing
  * "No parent yet" for 15-30 seconds while a visitor decided the product was
  * broken.
  *

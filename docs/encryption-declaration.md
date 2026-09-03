@@ -59,7 +59,7 @@ app plainly does encrypt.
 # Addendum: `experiments.baseUrl`
 
 Removed from `app.json` on 2026-09-02. It was set to `/demo` to serve the web
-demo build under `halmoni.uk/demo`.
+demo build under `halmoni.app/demo`.
 
 The App Store checklist flagged it as "should be inert on native — but verify,
 don't assume". Verified, and it was **not** inert: with `baseUrl` set, the iOS

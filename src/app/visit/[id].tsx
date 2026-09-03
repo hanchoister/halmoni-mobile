@@ -167,7 +167,7 @@ export default function VisitMode() {
       currentParent?.nickname?.trim() || currentParent?.name || 'our parent';
     const body = summaryDraft.trim() || autoSummary;
     const header = `${appt.provider_name} visit — ${parentLabel}\n${formatDate(appt.starts_at)}`;
-    const footer = '—\nSent from Halmoni · coordinate care for aging parents · https://halmoni.uk';
+    const footer = '—\nSent from Halmoni · coordinate care for aging parents · https://halmoni.app';
     return `${header}\n\n${body}\n\n${footer}`;
   }
 
