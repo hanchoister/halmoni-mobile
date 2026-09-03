@@ -16,6 +16,7 @@ import { useAuth } from '@/lib/auth';
 import { useFamily } from '@/lib/family';
 import { supabase } from '@/lib/supabase';
 import { syncOnce } from '@/lib/sync/engine';
+import { HalmoniMark } from '@/components/halmoni-mark';
 
 // Joining a family hands you an empty local mirror. Opening the app before the
 // first pull lands shows blank screens that look exactly like a brand-new
@@ -115,7 +116,7 @@ export function OnboardingScreen() {
         <ScrollView
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled">
-          <Text style={styles.emoji}>👵</Text>
+          <HalmoniMark size={84} style={{ marginTop: 20 }} />
           <Text style={styles.title}>Welcome to Halmoni</Text>
           <Text style={styles.subtitle}>
             {mode === 'choose'
@@ -161,12 +162,12 @@ export function OnboardingScreen() {
           {(mode === 'create' || mode === 'join') && (
             <View style={styles.form}>
               {mode === 'create' ? (
-                <Field label="FAMILY NAME" hint="e.g. The Choi family — only your siblings see this.">
+                <Field label="FAMILY NAME" hint="e.g. The Smith family — only your siblings see this.">
                   <TextInput
                     style={styles.input}
                     value={familyName}
                     onChangeText={setFamilyName}
-                    placeholder="The Choi family"
+                    placeholder="The Smith family"
                     placeholderTextColor="#a8a8a8"
                     autoFocus
                   />
@@ -273,7 +274,6 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#fefcf8' },
   flex: { flex: 1 },
   scroll: { padding: 24, paddingTop: 32, gap: 16 },
-  emoji: { fontSize: 56, textAlign: 'center' },
   title: {
     fontSize: 28,
     fontWeight: '800',

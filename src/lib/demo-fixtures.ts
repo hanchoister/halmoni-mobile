@@ -81,7 +81,7 @@ export function buildDemoStore(): DemoStore {
   counter = 0;
 
   const families = [
-    { id: DEMO_FAMILY_ID, name: 'Reyes family', created_at: daysAgo(200) },
+    { id: DEMO_FAMILY_ID, name: 'Smith family', created_at: daysAgo(200) },
   ];
 
   const family_members = [
@@ -89,7 +89,7 @@ export function buildDemoStore(): DemoStore {
       id: SOFIA_ID,
       family_id: DEMO_FAMILY_ID,
       user_id: DEMO_USER_ID,
-      name: 'Sofia Reyes',
+      name: 'Sofia Smith',
       relation: 'Daughter',
       phone: '(916) 555-0104',
       color: 'terracotta',
@@ -101,7 +101,7 @@ export function buildDemoStore(): DemoStore {
       id: MARCUS_ID,
       family_id: DEMO_FAMILY_ID,
       user_id: 'demo-user-marcus',
-      name: 'Marcus Reyes',
+      name: 'Marcus Smith',
       relation: 'Son',
       phone: '(503) 555-0187',
       color: 'sage',
@@ -113,7 +113,7 @@ export function buildDemoStore(): DemoStore {
       id: PRIYA_ID,
       family_id: DEMO_FAMILY_ID,
       user_id: 'demo-user-priya',
-      name: 'Priya Reyes',
+      name: 'Priya Smith',
       relation: 'Daughter',
       phone: '(415) 555-0122',
       color: 'butter',
@@ -127,7 +127,7 @@ export function buildDemoStore(): DemoStore {
     {
       id: DEMO_PARENT_ID,
       family_id: DEMO_FAMILY_ID,
-      name: 'Elena Reyes',
+      name: 'Elena Smith',
       nickname: 'Mom',
       photo_url: null,
       dob: '1950-03-14',
@@ -141,8 +141,8 @@ export function buildDemoStore(): DemoStore {
         'Prefers morning appointments. Reads better with large print. Loves gardenia tea.',
       blood_type: 'O+',
       ice_contacts: [
-        { name: 'Sofia Reyes', relation: 'Daughter', phone: '(916) 555-0104' },
-        { name: 'Marcus Reyes', relation: 'Son', phone: '(503) 555-0187' },
+        { name: 'Sofia Smith', relation: 'Daughter', phone: '(916) 555-0104' },
+        { name: 'Marcus Smith', relation: 'Son', phone: '(503) 555-0187' },
       ],
       pharmacy: {
         name: 'Walgreens Land Park',

@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { supabase } from '@/lib/supabase';
+import { HalmoniMark } from '@/components/halmoni-mark';
 
 export function LoginScreen() {
   const [stage, setStage] = useState<'email' | 'code'>('email');
@@ -78,7 +79,7 @@ export function LoginScreen() {
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.container}>
-          <Text style={styles.emoji}>👵</Text>
+          <HalmoniMark size={84} style={{ marginTop: 20 }} />
           <Text style={styles.title}>Halmoni</Text>
           <Text style={styles.subtitle}>
             {stage === 'email' ? 'Sign in to your account' : 'Enter the code we sent you'}
@@ -159,7 +160,6 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#fff' },
   flex: { flex: 1 },
   container: { flex: 1, justifyContent: 'center', padding: 24, gap: 12 },
-  emoji: { fontSize: 56, textAlign: 'center' },
   title: { fontSize: 34, fontWeight: '800', color: '#111', textAlign: 'center' },
   subtitle: { fontSize: 16, color: '#555', textAlign: 'center', marginBottom: 12 },
   input: {

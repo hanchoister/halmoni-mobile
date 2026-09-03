@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { palette, radius, spacing } from '@/lib/theme';
+import { HalmoniMark } from '@/components/halmoni-mark';
 
 type Props = {
   /**
@@ -22,7 +23,7 @@ export function WelcomeScreen({ onTryDemo, onLogIn }: Props) {
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
         <View style={styles.hero}>
-          <Text style={styles.emoji}>👵</Text>
+          <HalmoniMark size={96} />
           <Text style={styles.title}>Halmoni</Text>
           <Text style={styles.tagline}>Share the load. Care for your parent — together.</Text>
         </View>
@@ -61,7 +62,7 @@ export function WelcomeScreen({ onTryDemo, onLogIn }: Props) {
               style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}>
               <Text style={styles.primaryBtnText}>See the live demo</Text>
               <Text style={styles.primaryBtnSub}>
-                Explore with the sample Reyes family — nothing you do is saved.
+                Explore with the sample Smith family — nothing you do is saved.
               </Text>
             </Pressable>
           ) : null}
@@ -95,8 +96,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xl,
     justifyContent: 'space-between',
   },
-  hero: { alignItems: 'center', marginTop: spacing.xl },
-  emoji: { fontSize: 64 },
+  hero: { alignItems: 'center', marginTop: spacing.xxxl },
   title: {
     fontSize: 40,
     fontWeight: '800',
