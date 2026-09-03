@@ -1,5 +1,7 @@
 import * as Sentry from '@sentry/react-native';
 
+import { scrubBreadcrumb, scrubEvent } from '@/lib/reliability/sentry-scrub';
+
 /**
  * Crash reporting, configured so a crash report cannot carry health data.
  *
@@ -14,20 +16,6 @@ import * as Sentry from '@sentry/react-native';
  * So the rule this file enforces is: send the shape of the failure, never its
  * contents. Stack traces yes; values no.
  */
-
-/** Anything that looks like a value rather than a shape. */
-function stripQuery(url: string): string {
-  const q = url.indexOf('?');
-  return q === -1 ? url : `${url.slice(0, q)}?[filtered]`;
-}
-
-/** UUIDs identify rows, and a row id plus a table name is a pointer to a person. */
-const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
-const EMAIL_RE = /[^\s@]+@[^\s@]+\.[^\s@]+/g;
-
-function redact(text: string): string {
-  return text.replace(UUID_RE, '[id]').replace(EMAIL_RE, '[email]');
-}
 
 export function initSentry(): void {
   const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
@@ -50,47 +38,9 @@ export function initSentry(): void {
     // names carrying row ids, and the value does not justify the surface.
     tracesSampleRate: 0,
 
-    beforeBreadcrumb(breadcrumb) {
-      // Console breadcrumbs are the single most likely carrier: anything the
-      // app ever logged about a parent or a medication ends up here.
-      if (breadcrumb.category === 'console') return null;
+    beforeBreadcrumb: (breadcrumb) => scrubBreadcrumb(breadcrumb),
 
-      if (
-        breadcrumb.category === 'http' ||
-        breadcrumb.category === 'fetch' ||
-        breadcrumb.category === 'xhr'
-      ) {
-        const url = breadcrumb.data?.url;
-        if (typeof url === 'string') {
-          breadcrumb.data = { ...breadcrumb.data, url: redact(stripQuery(url)) };
-        }
-        // The body is never worth keeping — it is the record itself.
-        if (breadcrumb.data) {
-          delete (breadcrumb.data as Record<string, unknown>).body;
-          delete (breadcrumb.data as Record<string, unknown>).response;
-        }
-      }
-
-      if (breadcrumb.message) breadcrumb.message = redact(breadcrumb.message);
-      return breadcrumb;
-    },
-
-    beforeSend(event) {
-      // Request bodies, headers and cookies: drop wholesale.
-      delete event.request;
-      // `extra` and `contexts.state` are where component state gets attached,
-      // and component state here is the care record.
-      delete event.extra;
-      if (event.contexts) delete (event.contexts as Record<string, unknown>).state;
-      // Identify the install, never the person.
-      if (event.user) event.user = { id: event.user.id };
-
-      if (event.message) event.message = redact(event.message);
-      event.exception?.values?.forEach((v) => {
-        if (v.value) v.value = redact(v.value);
-      });
-      return event;
-    },
+    beforeSend: (event) => scrubEvent(event),
   });
 }
 
