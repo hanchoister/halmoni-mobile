@@ -35,6 +35,18 @@ export function Pill({
 }
 
 const styles = StyleSheet.create({
-  pill: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: radius.pill, alignSelf: 'flex-start' },
+  // flexShrink + maxWidth matter: pillRow wraps BETWEEN pills, but a single pill
+  // wider than the row cannot wrap and used to run off the card — "Mild
+  // cognitive impairment (dx Apr 2026)" was clipped by the screen edge on the
+  // Today card. Shrinking lets the label wrap to a second line inside the pill
+  // instead, which keeps the whole condition readable.
+  pill: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+    alignSelf: 'flex-start',
+    flexShrink: 1,
+    maxWidth: '100%',
+  },
   text: { fontSize: 11, fontWeight: '600' },
 });
