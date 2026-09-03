@@ -39,7 +39,15 @@ function applyFilters(rows: Row[], filters: Filter[]): Row[] {
         case 'lte':
           return v != null && String(v) <= String(f.val);
         case 'is':
-          return v === f.val;
+          // SQL `IS NULL` matches a column that is null. The fixtures do not
+          // carry `deleted_at` at all, so the value here is `undefined`, and a
+          // strict `undefined === null` was false — which meant
+          // `.is('deleted_at', null)` filtered out EVERY row in the demo
+          // store. Since every synced table is soft-deleted and every read
+          // carries that filter, the whole demo returned empty: no family, so
+          // the app fell through to the create-family screen instead of the
+          // sample data. Treat missing and null as the same absence.
+          return f.val === null ? v == null : v === f.val;
         case 'contains':
           return Array.isArray(v) && f.val.every((x: any) => v.includes(x));
       }
