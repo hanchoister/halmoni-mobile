@@ -20,6 +20,7 @@ import type { DnrStatus, IceContact } from '@/lib/parent';
 import { useParents } from '@/lib/parent';
 import { writeRow } from '@/lib/sync/write-path';
 import { palette, radius, spacing } from '@/lib/theme';
+import { validateDob } from '@/lib/validate-dob';
 
 // Advance-care fields — resuscitation preference and healthcare proxy — are
 // hidden for now. The first users are siblings coordinating a parent's
@@ -109,8 +110,9 @@ export default function EditParentScreen() {
 
   async function save() {
     if (!parent || !name.trim()) return;
-    if (dob.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(dob.trim())) {
-      Alert.alert('Bad date of birth', 'Use YYYY-MM-DD or leave blank.');
+    const dobError = validateDob(dob);
+    if (dobError) {
+      Alert.alert('Check the date of birth', dobError);
       return;
     }
     setSaving(true);

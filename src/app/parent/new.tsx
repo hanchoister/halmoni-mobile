@@ -10,6 +10,7 @@ import { useFamily } from '@/lib/family';
 import { newId } from '@/lib/newid';
 import { writeRow } from '@/lib/sync/write-path';
 import { palette, spacing } from '@/lib/theme';
+import { validateDob } from '@/lib/validate-dob';
 
 export default function AddParentScreen() {
   const { familyId } = useFamily();
@@ -24,8 +25,9 @@ export default function AddParentScreen() {
 
   async function save() {
     if (!familyId || !name.trim()) return;
-    if (dob.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(dob.trim())) {
-      Alert.alert('Bad date of birth', 'Use YYYY-MM-DD or leave blank.');
+    const dobError = validateDob(dob);
+    if (dobError) {
+      Alert.alert('Check the date of birth', dobError);
       return;
     }
     setSaving(true);
