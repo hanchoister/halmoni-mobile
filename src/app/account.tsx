@@ -27,6 +27,11 @@ export default function AccountScreen() {
   // whole family's records with it. Say so plainly before they confirm.
   const isLastMember = siblings.length <= 1;
   const canConfirm = confirmText.trim().toUpperCase() === 'DELETE' && !deleting;
+  // Shown inline in the sheet rather than only through Alert.alert: on React
+  // Native Web an Alert can render as a bare window.alert or not at all, so a
+  // failed deletion looked indistinguishable from a successful one. A
+  // destructive action that can fail silently is worse than one that refuses.
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Escape hatch for the case where the device's mirror has drifted from the
   // server — most sharply after data is removed server-side, which leaves the
@@ -67,16 +72,16 @@ export default function AccountScreen() {
   async function confirmDelete() {
     if (!canConfirm) return;
     setDeleting(true);
+    setDeleteError(null);
     try {
       await deleteAccount();
       // Auth state flips to signed-out and the root layout swaps to the
       // sign-in screen, so there is no navigation to do here.
     } catch (err) {
       setDeleting(false);
-      Alert.alert(
-        'Could not delete account',
-        err instanceof Error ? err.message : String(err),
-      );
+      const message = err instanceof Error ? err.message : String(err);
+      setDeleteError(message);
+      Alert.alert('Could not delete account', message);
     }
   }
 
@@ -204,6 +209,12 @@ export default function AccountScreen() {
               editable={!deleting}
               placeholder="DELETE"
             />
+            {deleteError ? (
+              <>
+                <View style={{ height: spacing.sm }} />
+                <Text style={styles.deleteError}>{deleteError}</Text>
+              </>
+            ) : null}
             <View style={{ height: spacing.md }} />
             <Button
               title="Permanently delete"
@@ -249,6 +260,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: spacing.lg,
   },
+  deleteError: { color: '#b3261e', fontSize: 13, fontWeight: '600' },
   sheetTitle: {
     fontSize: 18,
     fontWeight: '700',
