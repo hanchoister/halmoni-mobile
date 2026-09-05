@@ -6,12 +6,13 @@ import { Avatar } from '@/components/ui/avatar';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Screen } from '@/components/ui/screen';
+import { Icon, IconName } from '@/components/ui/icon';
 import { list } from '@/lib/db/repository';
 import { useDataVersion } from '@/lib/db/signal';
 import { formatRelative } from '@/lib/format';
 import { useMe } from '@/lib/me';
 import { useParents } from '@/lib/parent';
-import { palette, radius, spacing } from '@/lib/theme';
+import { color, fontFamily, palette, radius, spacing, typography } from '@/lib/theme';
 
 type TimelineItem = {
   id: string;
@@ -168,7 +169,7 @@ export default function TimelineScreen() {
   if (!currentParent) {
     return (
       <Screen>
-        <EmptyState emoji="🌿" title="No parent yet" message="Add a parent to see the timeline." />
+        <EmptyState icon="leaf" title="No parent yet" message="Add a parent to see the timeline." />
       </Screen>
     );
   }
@@ -192,18 +193,23 @@ export default function TimelineScreen() {
     handoffs: 'Hand-offs',
   };
 
-  function kindEmoji(k: TimelineItem['kind']): string {
-    return k === 'dose'
-      ? '💊'
-      : k === 'symptom'
-        ? '⚠️'
-        : k === 'note'
-          ? '📝'
-          : k === 'visit'
-            ? '🩺'
-            : k === 'message'
-              ? '💬'
-              : '🤝';
+  // Icon plus a tone: sage for things that went right (a dose given, a hand-off
+  // accepted), terracotta for things that want attention (a symptom, a visit).
+  function kindIcon(k: TimelineItem['kind']): { name: IconName; tone: string; well: string } {
+    switch (k) {
+      case 'dose':
+        return { name: 'meds', tone: color.confirm, well: color.confirmSoft };
+      case 'symptom':
+        return { name: 'alert', tone: color.accent, well: color.accentSoft };
+      case 'note':
+        return { name: 'note', tone: color.textMuted, well: color.surfaceAlt };
+      case 'visit':
+        return { name: 'visits', tone: color.accent, well: color.accentSoft };
+      case 'message':
+        return { name: 'note', tone: color.confirm, well: color.confirmSoft };
+      default:
+        return { name: 'handoff', tone: color.confirm, well: color.confirmSoft };
+    }
   }
 
   return (
@@ -229,7 +235,7 @@ export default function TimelineScreen() {
 
       <View style={{ paddingHorizontal: spacing.lg, gap: spacing.md }}>
         {filtered.length === 0 ? (
-          <EmptyState emoji="🕓" title="Nothing in this filter" message="Try a different filter or come back later." />
+          <EmptyState icon="timeline" title="Nothing in this filter" message="Try a different filter or come back later." />
         ) : (
           filtered.map((item) => {
             const author = item.authorMemberId ? siblings.find((s) => s.id === item.authorMemberId) : null;
@@ -239,7 +245,14 @@ export default function TimelineScreen() {
                 onPress={() => item.linkTo && router.push(item.linkTo as any)}>
                 <Card>
                   <View style={styles.itemRow}>
-                    <Text style={styles.kindEmoji}>{kindEmoji(item.kind)}</Text>
+                    {(() => {
+                      const k = kindIcon(item.kind);
+                      return (
+                        <View style={[styles.kindWell, { backgroundColor: k.well }]}>
+                          <Icon name={k.name} size={16} color={k.tone} strokeWidth={2} />
+                        </View>
+                      );
+                    })()}
                     <View style={{ flex: 1 }}>
                       <Text style={styles.itemTitle}>{item.title}</Text>
                       <Text style={styles.itemTime}>{formatRelative(item.when)}</Text>
@@ -277,13 +290,19 @@ const styles = StyleSheet.create({
     backgroundColor: palette.white,
   },
   filterPillActive: { backgroundColor: palette.sage500, borderColor: palette.sage500 },
-  filterText: { fontSize: 12, fontWeight: '600', color: palette.ink700 },
+  filterText: { ...typography.bodyStrong, fontSize: 12, color: palette.ink700 },
   filterTextActive: { color: palette.white },
   itemRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
-  kindEmoji: { fontSize: 22 },
-  itemTitle: { fontSize: 14, fontWeight: '700', color: palette.ink900 },
-  itemTime: { fontSize: 11, color: palette.ink500, marginTop: 2 },
-  itemBody: { fontSize: 12, color: palette.ink700, marginTop: 6, lineHeight: 16 },
+  kindWell: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  itemTitle: { ...typography.bodyStrong, color: palette.ink900 },
+  itemTime: { fontFamily: fontFamily.sans, fontSize: 11, color: palette.ink500, marginTop: 2 },
+  itemBody: { ...typography.meta, fontSize: 12, color: palette.ink700, marginTop: 6, lineHeight: 16 },
   authorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
-  authorName: { fontSize: 11, color: palette.ink500 },
+  authorName: { fontFamily: fontFamily.sans, fontSize: 11, color: palette.ink500 },
 });

@@ -1,8 +1,9 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { palette, radius, spacing } from '@/lib/theme';
+import { color, palette, radius, spacing } from '@/lib/theme';
 import { HalmoniMark } from '@/components/halmoni-mark';
+import { Icon } from '@/components/ui/icon';
 
 type Props = {
   /**
@@ -30,25 +31,25 @@ export function WelcomeScreen({ onTryDemo, onLogIn }: Props) {
 
         <View style={styles.bulletList}>
           <Text style={styles.bullet}>
-            <Text style={styles.bulletEmoji}>💊 </Text>
+            <Icon name="meds" size={17} color={color.confirm} />
             <Text style={styles.bulletText}>
               Track meds, doses, and refills in one place your siblings can see.
             </Text>
           </Text>
           <Text style={styles.bullet}>
-            <Text style={styles.bulletEmoji}>🩺 </Text>
+            <Icon name="visits" size={17} color={color.confirm} />
             <Text style={styles.bulletText}>
               Capture doctor visits — diagnoses, new meds, follow-ups — so nothing gets lost.
             </Text>
           </Text>
           <Text style={styles.bullet}>
-            <Text style={styles.bulletEmoji}>🔄 </Text>
+            <Icon name="refill" size={17} color={color.confirm} />
             <Text style={styles.bulletText}>
               Hand off the mental load when you need a break.
             </Text>
           </Text>
           <Text style={styles.bullet}>
-            <Text style={styles.bulletEmoji}>👀 </Text>
+            <Icon name="watch" size={17} color={color.confirm} />
             <Text style={styles.bulletText}>
               Spot side effects and missed refills before they become emergencies.
             </Text>

@@ -7,11 +7,12 @@ import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Pill } from '@/components/ui/pill';
 import { Screen } from '@/components/ui/screen';
+import { Icon } from '@/components/ui/icon';
 import { list } from '@/lib/db/repository';
 import { useDataVersion } from '@/lib/db/signal';
 import { formatRelative, formatTime } from '@/lib/format';
 import { useParents } from '@/lib/parent';
-import { palette, radius, spacing } from '@/lib/theme';
+import { color, fontFamily, palette, radius, spacing, typography } from '@/lib/theme';
 
 type ApptRow = {
   id: string;
@@ -57,7 +58,7 @@ export default function AppointmentsScreen() {
   if (!currentParent) {
     return (
       <Screen>
-        <EmptyState emoji="🌿" title="No parent yet" message="Add a parent to track visits." />
+        <EmptyState icon="leaf" title="No parent yet" message="Add a parent to track visits." />
       </Screen>
     );
   }
@@ -69,11 +70,20 @@ export default function AppointmentsScreen() {
   return (
     <Screen
       refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}>
-      <Button title="+ Add appointment" onPress={() => router.push('/appointment/new')} />
+      <Pressable
+        onPress={() => router.push('/appointment/new')}
+        accessibilityRole="button"
+        accessibilityLabel="Add an appointment"
+        style={styles.addRow}>
+        <View style={styles.addPlus}>
+          <Icon name="plus" size={16} color={color.onHero} strokeWidth={2.2} />
+        </View>
+        <Text style={styles.addLabel}>Add an appointment</Text>
+      </Pressable>
 
       {appts.length === 0 ? (
         <EmptyState
-          emoji="🩺"
+          icon="visits"
           title="No appointments yet"
           message="Add the first one and we'll help you prep for it."
         />
@@ -133,11 +143,19 @@ function ApptCard({ appt }: { appt: ApptRow }) {
 }
 
 const styles = StyleSheet.create({
+  addRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xs },
+  addPlus: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: color.hero,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addLabel: { ...typography.bodyStrong, color: color.text },
   sectionTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: palette.ink500,
-    letterSpacing: 1,
+    ...typography.label,
+    color: color.textMuted,
     marginTop: spacing.sm,
   },
   row: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
@@ -149,9 +167,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dateDay: { fontSize: 20, fontWeight: '800', color: palette.terracotta700 },
-  dateMonth: { fontSize: 10, color: palette.terracotta700, textTransform: 'uppercase' },
-  provider: { fontSize: 15, fontWeight: '700', color: palette.ink900 },
-  sub: { fontSize: 12, color: palette.ink500, marginTop: 2 },
-  summary: { fontSize: 12, color: palette.ink700, marginTop: 6, lineHeight: 16 },
+  dateDay: { ...typography.title, fontSize: 22, color: palette.terracotta700 },
+  dateMonth: { fontFamily: fontFamily.sans, fontSize: 10, color: palette.terracotta700, textTransform: 'uppercase' },
+  provider: { ...typography.bodyStrong, color: palette.ink900 },
+  sub: { ...typography.meta, fontSize: 12, color: palette.ink500, marginTop: 2 },
+  summary: { ...typography.meta, fontSize: 12, color: palette.ink700, marginTop: 6, lineHeight: 16 },
 });

@@ -13,6 +13,7 @@ import { useFamily } from '@/lib/family';
 import { useMe } from '@/lib/me';
 import { supabase } from '@/lib/supabase';
 import { palette, spacing } from '@/lib/theme';
+import { signOutEverywhere } from '@/lib/sign-out';
 
 export default function AccountScreen() {
   const { session } = useAuth();
@@ -55,7 +56,7 @@ export default function AccountScreen() {
             setBusy(true);
             try {
               await wipeLocalData();
-              await supabase.auth.signOut();
+              await signOutEverywhere();
             } catch (err) {
               setBusy(false);
               Alert.alert(
@@ -106,7 +107,7 @@ export default function AccountScreen() {
         style: 'destructive',
         onPress: async () => {
           setBusy(true);
-          await supabase.auth.signOut();
+          await signOutEverywhere();
           setBusy(false);
         },
       },

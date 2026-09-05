@@ -1,8 +1,17 @@
 import { ReactNode } from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
 
-import { palette, radius, spacing } from '@/lib/theme';
+import { color, radius, shadow, spacing } from '@/lib/theme';
 
+/**
+ * A card lifts off the cream ground rather than being outlined on it.
+ *
+ * The previous version was a 14px box with a 1px cream hairline on a cream
+ * background and no shadow — the detail that dated the interface fastest,
+ * because at that contrast the edge reads as a smudge rather than an edge.
+ * Separation now comes from elevation (white on cream, plus a soft shadow),
+ * with the hairline kept only at 6% to hold the shape on a dim screen.
+ */
 export function Card({
   children,
   style,
@@ -14,20 +23,32 @@ export function Card({
 }) {
   const tintBg =
     tint === 'sage'
-      ? palette.sage50
+      ? color.confirmTint
       : tint === 'cream'
-        ? palette.cream50
+        ? color.surfaceAlt
         : tint === 'warm'
-          ? palette.terracotta100
-          : palette.white;
-  return <View style={[styles.card, { backgroundColor: tintBg }, style]}>{children}</View>;
+          ? color.accentSoft
+          : color.surface;
+
+  // A tinted card is already distinct from the ground, so it does not need the
+  // shadow as well — stacking both reads as heavy.
+  const flat = tint && tint !== 'white';
+
+  return (
+    <View style={[styles.card, { backgroundColor: tintBg }, !flat && styles.raised, style]}>
+      {children}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: palette.cream200,
+    borderRadius: radius.xl,
     padding: spacing.lg,
+  },
+  raised: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.hairline,
+    ...shadow.card,
   },
 });

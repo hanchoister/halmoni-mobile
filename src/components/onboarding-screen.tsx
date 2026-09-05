@@ -17,6 +17,9 @@ import { useFamily } from '@/lib/family';
 import { supabase } from '@/lib/supabase';
 import { syncOnce } from '@/lib/sync/engine';
 import { HalmoniMark } from '@/components/halmoni-mark';
+import { Icon } from '@/components/ui/icon';
+import { palette } from '@/lib/theme';
+import { signOutEverywhere } from '@/lib/sign-out';
 
 // Joining a family hands you an empty local mirror. Opening the app before the
 // first pull lands shows blank screens that look exactly like a brand-new
@@ -105,7 +108,7 @@ export function OnboardingScreen() {
   }
 
   async function signOut() {
-    await supabase.auth.signOut();
+    await signOutEverywhere();
   }
 
   return (
@@ -130,7 +133,7 @@ export function OnboardingScreen() {
             <View style={styles.cardStack}>
               <Pressable style={styles.choiceCard} onPress={() => setMode('create')}>
                 <View style={[styles.choiceIcon, { backgroundColor: '#dce6e0' }]}>
-                  <Text style={[styles.choiceIconText, { color: '#3a4f44' }]}>👨‍👩‍👧</Text>
+                  <Icon name="family" size={22} color={palette.sage700} strokeWidth={2} />
                 </View>
                 <View style={styles.choiceText}>
                   <Text style={styles.choiceTitle}>Start a new family</Text>
@@ -142,7 +145,7 @@ export function OnboardingScreen() {
 
               <Pressable style={styles.choiceCard} onPress={() => setMode('join')}>
                 <View style={[styles.choiceIcon, { backgroundColor: '#f5dfd4' }]}>
-                  <Text style={[styles.choiceIconText, { color: '#7e4736' }]}>🔗</Text>
+                  <Icon name="handoff" size={22} color={palette.terracotta700} strokeWidth={2} />
                 </View>
                 <View style={styles.choiceText}>
                   <Text style={styles.choiceTitle}>Join with an invite code</Text>

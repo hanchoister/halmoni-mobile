@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Screen } from '@/components/ui/screen';
+import { Icon } from '@/components/ui/icon';
 import { list } from '@/lib/db/repository';
 import { useDataVersion } from '@/lib/db/signal';
 import { analyzeSymptoms } from '@/lib/detective';
@@ -13,7 +14,7 @@ import { loadDismissedPairs } from '@/lib/detective-dismissals';
 import { useFamily } from '@/lib/family';
 import { formatDateShort } from '@/lib/format';
 import { useParents } from '@/lib/parent';
-import { palette, radius, spacing } from '@/lib/theme';
+import { color, fontFamily, palette, radius, spacing, typography } from '@/lib/theme';
 
 type MedRow = {
   id: string;
@@ -85,7 +86,7 @@ export default function MedsScreen() {
     return (
       <Screen>
         <EmptyState
-          emoji="🌿"
+          icon="leaf"
           title="No parent yet"
           message="Add a parent on the Today tab to start tracking medications."
         />
@@ -101,11 +102,20 @@ export default function MedsScreen() {
   return (
     <Screen
       refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}>
-      <Button title="+ Add medication" onPress={() => router.push('/medication/new')} />
+      <Pressable
+        onPress={() => router.push('/medication/new')}
+        accessibilityRole="button"
+        accessibilityLabel="Add a medication"
+        style={styles.addRow}>
+        <View style={styles.addPlus}>
+          <Icon name="plus" size={16} color={color.onHero} strokeWidth={2.2} />
+        </View>
+        <Text style={styles.addLabel}>Add a medication</Text>
+      </Pressable>
 
       {patternCount > 0 && (
         <Pressable onPress={() => router.push('/patterns')} style={styles.detectiveBanner}>
-          <Text style={styles.detectiveEmoji}>🔎</Text>
+          <Icon name="search" size={20} color={color.accent} />
           <View style={{ flex: 1 }}>
             <Text style={styles.detectiveTitle}>
               {patternCount === 1
@@ -119,7 +129,7 @@ export default function MedsScreen() {
 
       {meds.length === 0 ? (
         <EmptyState
-          emoji="💊"
+          icon="meds"
           title="No medications yet"
           message="Add the first medication and we'll start tracking doses."
         />
@@ -135,7 +145,9 @@ export default function MedsScreen() {
               <Card>
                 <View style={styles.row}>
                   <View style={styles.pillIcon}>
-                    <Text style={styles.pillEmoji}>💊</Text>
+                    <View style={styles.pillIcon}>
+                    <Icon name="meds" size={19} color={color.confirm} strokeWidth={2} />
+                  </View>
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.name}>{m.name}</Text>
@@ -160,6 +172,16 @@ export default function MedsScreen() {
 }
 
 const styles = StyleSheet.create({
+  addRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xs },
+  addPlus: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: color.hero,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addLabel: { ...typography.bodyStrong, color: color.text },
   row: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
   pillIcon: {
     width: 42,
@@ -169,12 +191,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pillEmoji: { fontSize: 22 },
-  name: { fontSize: 16, fontWeight: '700', color: palette.ink900 },
-  sub: { fontSize: 13, color: palette.ink500, marginTop: 2 },
-  schedule: { fontSize: 12, color: palette.sage700, marginTop: 6, fontWeight: '600' },
-  refill: { fontSize: 11, color: palette.ink500, marginTop: 4 },
-  refillSoon: { color: palette.terracotta700, fontWeight: '700' },
+  name: { ...typography.title, fontSize: 16, color: palette.ink900 },
+  sub: { ...typography.meta, color: palette.ink500, marginTop: 2 },
+  schedule: { ...typography.meta, fontSize: 12, color: palette.sage700, marginTop: 6 },
+  refill: { fontFamily: fontFamily.sans, fontSize: 11, color: palette.ink500, marginTop: 4 },
+  refillSoon: { color: palette.terracotta700, fontFamily: fontFamily.sansBold },
   detectiveBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -185,7 +206,6 @@ const styles = StyleSheet.create({
     borderColor: palette.sage500,
     backgroundColor: palette.sage50,
   },
-  detectiveEmoji: { fontSize: 22 },
-  detectiveTitle: { fontSize: 14, fontWeight: '700', color: palette.ink900 },
-  detectiveSub: { fontSize: 12, color: palette.ink500, marginTop: 2 },
+  detectiveTitle: { ...typography.bodyStrong, color: palette.ink900 },
+  detectiveSub: { ...typography.meta, fontSize: 12, color: palette.ink500, marginTop: 2 },
 });

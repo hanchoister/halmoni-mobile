@@ -1,13 +1,14 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HeadsUp } from '@/components/heads-up';
 import { Avatar } from '@/components/ui/avatar';
+import { Icon } from '@/components/ui/icon';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Pill } from '@/components/ui/pill';
 import { Screen } from '@/components/ui/screen';
 import { list } from '@/lib/db/repository';
 import { useDataVersion } from '@/lib/db/signal';
@@ -18,7 +19,7 @@ import { useMe } from '@/lib/me';
 import { newId } from '@/lib/newid';
 import { useParents } from '@/lib/parent';
 import { writeRow } from '@/lib/sync/write-path';
-import { palette, radius, spacing } from '@/lib/theme';
+import { color, fontFamily, palette, radius, spacing, typography } from '@/lib/theme';
 
 type DoseRow = {
   id: string;
@@ -72,7 +73,15 @@ type OnDutyRow = {
   created_at: string;
 };
 
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
 export default function TodayScreen() {
+  const insets = useSafeAreaInsets();
   const { familyId } = useFamily();
   const { currentParent } = useParents();
   const { me, siblings } = useMe();
@@ -236,7 +245,7 @@ export default function TodayScreen() {
     return (
       <Screen>
         <EmptyState
-          emoji="🌿"
+          icon="family"
           title="No parent yet"
           message="Add the parent you're caring for to start tracking medications and appointments."
         />
@@ -250,53 +259,99 @@ export default function TodayScreen() {
   const age = calcAge(currentParent.dob);
   const todayMeds = doses.map((d) => ({ dose: d, med: meds.find((m) => m.id === d.medication_id) }));
 
+  const parentName = currentParent.nickname || currentParent.name;
+  const dosesDue = todayMeds.length;
+  const dosesGiven = todayMeds.filter(({ dose }) => !!dose.given_at).length;
+
   return (
     <Screen
+      padded={false}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}>
-      <Pressable onPress={() => router.push('/profile')}>
-        <Card tint="sage" style={styles.parentCard}>
-          <Avatar name={currentParent.nickname || currentParent.name} color="sage" size={48} />
+      {/* The hero. It is the one saturated surface in the app, and it exists to
+          answer "how is Mom, and is anything on me?" before you scroll. */}
+      <View style={[styles.hero, { paddingTop: insets.top + spacing.sm }]}>
+        <View style={styles.heroTop}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.parentName}>{currentParent.nickname || currentParent.name}</Text>
-            {age != null && <Text style={styles.parentSub}>{age} years old</Text>}
-            {currentParent.conditions.length > 0 && (
-              <View style={styles.pillRow}>
-                {currentParent.conditions.slice(0, 3).map((c) => (
-                  <Pill key={c} label={c} tone="sage" />
-                ))}
-              </View>
-            )}
-          </View>
-        </Card>
-      </Pressable>
-
-      <Card>
-        <Text style={styles.sectionLabel}>ON DUTY</Text>
-        {dutyMember ? (
-          <View style={styles.dutyRow}>
-            <Avatar name={dutyMember.name} color={dutyMember.color} size={40} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.dutyName}>
-                {meIsOnDuty ? 'You' : dutyMember.name}
-                {meIsOnDuty && <Text style={styles.dutySub}>  (you)</Text>}
+            <Text style={styles.heroGreeting}>
+              {greeting()}
+              {me?.name ? `, ${me.name.split(' ')[0]}` : ''}
+            </Text>
+            <Pressable onPress={() => router.push('/profile')}>
+              <Text style={styles.heroDisplay}>
+                How&rsquo;s <Text style={styles.heroDisplayAccent}>{parentName}</Text> today?
               </Text>
-              <Text style={styles.dutySub}>Until {formatRelative(onDuty!.until)}</Text>
-            </View>
-            {meIsOnDuty && (
-              <Button
-                title="Hand off"
-                variant="secondary"
-                onPress={() => router.push('/handoff/new')}
-              />
-            )}
+            </Pressable>
           </View>
-        ) : (
-          <View style={styles.dutyRow}>
-            <Text style={styles.dutySub}>No one is on duty for {currentParent.nickname || currentParent.name}.</Text>
-            <Button title="Take over" onPress={takeOverDuty} />
+          <Pressable
+            onPress={() => router.push('/account')}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Your account"
+            style={styles.heroAccount}>
+            <Icon name="account" size={19} color={color.onHeroDim} />
+          </Pressable>
+        </View>
+
+        <View style={styles.statRow}>
+          <View>
+            <Text style={styles.statValue}>
+              {dosesGiven}
+              <Text style={styles.statOf}>/{dosesDue}</Text>
+            </Text>
+            <Text style={styles.statLabel}>MEDS</Text>
           </View>
-        )}
-      </Card>
+          <View style={styles.statDivider} />
+          <View>
+            <Text style={styles.statValue}>{age ?? '—'}</Text>
+            <Text style={styles.statLabel}>YEARS OLD</Text>
+          </View>
+          {currentParent.conditions.length > 0 && (
+            <>
+              <View style={styles.statDivider} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.statValue}>{currentParent.conditions.length}</Text>
+                <Text style={styles.statLabel} numberOfLines={1}>
+                  CONDITIONS
+                </Text>
+              </View>
+            </>
+          )}
+        </View>
+
+        <View style={styles.dutyWell}>
+          {dutyMember ? (
+            <>
+              <Avatar name={dutyMember.name} color={dutyMember.color} size={32} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dutyName}>
+                  {meIsOnDuty ? 'You\u2019re on duty' : `${dutyMember.name} is on duty`}
+                </Text>
+                <Text style={styles.dutySub}>Ends {formatRelative(onDuty!.until)}</Text>
+              </View>
+              {meIsOnDuty && (
+                <Pressable
+                  onPress={() => router.push('/handoff/new')}
+                  accessibilityRole="button"
+                  style={styles.heroChip}>
+                  <Text style={styles.heroChipText}>Hand off</Text>
+                </Pressable>
+              )}
+            </>
+          ) : (
+            <>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dutyName}>No one is on duty</Text>
+                <Text style={styles.dutySub}>for {parentName}</Text>
+              </View>
+              <Pressable onPress={takeOverDuty} accessibilityRole="button" style={styles.heroChip}>
+                <Text style={styles.heroChipText}>Take over</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
+      </View>
+
+      <View style={styles.body}>
 
       <HeadsUp
         meds={meds}
@@ -309,7 +364,14 @@ export default function TodayScreen() {
       />
 
       <Card>
-        <Text style={styles.sectionLabel}>TODAY&apos;S MEDS</Text>
+        <View style={styles.cardHead}>
+          <Text style={styles.sectionLabel}>TODAY&apos;S MEDS</Text>
+          {dosesDue > 0 && (
+            <Text style={styles.cardCount}>
+              {dosesGiven} of {dosesDue}
+            </Text>
+          )}
+        </View>
         {todayMeds.length === 0 ? (
           <Text style={styles.empty}>No doses scheduled today.</Text>
         ) : (
@@ -326,7 +388,7 @@ export default function TodayScreen() {
                 <View
                   style={[
                     styles.checkbox,
-                    isGiven && { backgroundColor: palette.sage500, borderColor: palette.sage500 },
+                    isGiven && { backgroundColor: color.confirm, borderColor: color.confirm },
                   ]}>
                   {isGiven && <Text style={styles.checkmark}>✓</Text>}
                 </View>
@@ -372,58 +434,106 @@ export default function TodayScreen() {
                 {isSameDay(nextAppt.starts_at, new Date()) ? ' today' : ''}
               </Text>
             </View>
+            <Icon name="chevronRight" size={17} color={color.textFaint} />
           </Pressable>
         ) : (
           <Text style={styles.empty}>No upcoming appointments.</Text>
         )}
       </Card>
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  parentCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  parentName: { fontSize: 18, fontWeight: '700', color: palette.ink900 },
-  parentSub: { fontSize: 13, color: palette.ink500, marginTop: 2 },
-  pillRow: { flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' },
-  sectionLabel: { fontSize: 11, fontWeight: '700', color: palette.ink500, letterSpacing: 1, marginBottom: spacing.sm },
-  dutyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  dutyName: { fontSize: 15, fontWeight: '600', color: palette.ink900 },
-  dutySub: { fontSize: 12, color: palette.ink500, marginTop: 2 },
-  empty: { fontSize: 13, color: palette.ink500 },
+  // ---- hero ----------------------------------------------------------------
+  hero: {
+    backgroundColor: color.hero,
+    borderBottomLeftRadius: radius.hero,
+    borderBottomRightRadius: radius.hero,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xl,
+  },
+  heroTop: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
+  heroAccount: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: color.heroWell,
+    marginTop: 2,
+  },
+  heroGreeting: { ...typography.meta, color: color.onHeroDim },
+  heroDisplay: { ...typography.display, color: color.onHero, marginTop: spacing.xs },
+  heroDisplayAccent: { color: color.onHeroAccent },
+
+  statRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.lg, marginTop: spacing.xl },
+  statValue: { ...typography.display, fontSize: 24, lineHeight: 26, color: color.onHero },
+  statOf: { fontFamily: fontFamily.sans, fontSize: 15, color: color.onHeroFaint },
+  statLabel: { ...typography.label, fontSize: 9.5, color: color.onHeroFaint, marginTop: 5 },
+  statDivider: { width: 1, height: 32, backgroundColor: 'rgba(244,239,230,0.16)' },
+
+  dutyWell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginTop: spacing.lg,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: color.heroWell,
+  },
+  dutyName: { ...typography.bodyStrong, fontSize: 14, color: color.onHero },
+  dutySub: { ...typography.meta, fontSize: 12, color: color.onHeroDim, marginTop: 1 },
+  heroChip: {
+    backgroundColor: color.onHero,
+    borderRadius: radius.pill,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  heroChipText: { ...typography.bodyStrong, fontSize: 12, color: color.hero },
+
+  // ---- body ----------------------------------------------------------------
+  body: { padding: spacing.lg, gap: spacing.md },
+  cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sectionLabel: { ...typography.label, color: color.textMuted, marginBottom: spacing.sm },
+  cardCount: { ...typography.bodyStrong, fontSize: 12, color: color.confirm, marginBottom: spacing.sm },
+  empty: { ...typography.meta, color: color.textMuted },
+
   doseRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    paddingVertical: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: palette.cream100,
+    paddingVertical: spacing.sm + 2,
   },
+  // Round, not square: a dose is a thing you tick off, and the circle reads as
+  // a checklist rather than a form field.
   checkbox: {
-    width: 26,
-    height: 26,
-    borderRadius: 6,
-    borderWidth: 2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.8,
     borderColor: palette.cream300,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkmark: { color: palette.white, fontSize: 16, fontWeight: '800' },
-  doseTitle: { fontSize: 15, color: palette.ink900, fontWeight: '600' },
-  doseGiven: { textDecorationLine: 'line-through', color: palette.ink500 },
-  doseSub: { fontSize: 12, color: palette.ink500, marginTop: 2 },
-  doseGiver: { fontSize: 11, color: palette.sage600, marginTop: 2 },
+  checkmark: { color: palette.white, fontFamily: fontFamily.sans, fontSize: 14 },
+  doseTitle: { ...typography.bodyStrong, fontSize: 14, color: color.text },
+  doseGiven: { color: color.textFaint, textDecorationLine: 'line-through' },
+  doseSub: { ...typography.meta, fontSize: 12, color: color.textMuted, marginTop: 1 },
+  doseGiver: { ...typography.meta, fontSize: 11, color: color.textFaint, marginTop: 1 },
+
   apptRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   apptDate: {
-    width: 50,
-    height: 50,
+    width: 46,
+    height: 46,
     borderRadius: radius.md,
-    backgroundColor: palette.terracotta100,
+    backgroundColor: color.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  apptDateDay: { fontSize: 20, fontWeight: '800', color: palette.terracotta700 },
-  apptDateMonth: { fontSize: 10, color: palette.terracotta700, textTransform: 'uppercase' },
-  apptProvider: { fontSize: 15, fontWeight: '600', color: palette.ink900 },
-  apptSub: { fontSize: 12, color: palette.ink500, marginTop: 2 },
+  apptDateDay: { ...typography.displaySm, fontSize: 17, lineHeight: 19, color: palette.terracotta700 },
+  apptDateMonth: { ...typography.label, fontSize: 8.5, color: palette.terracotta600, marginTop: 1 },
+  apptProvider: { ...typography.bodyStrong, fontSize: 14, color: color.text },
+  apptSub: { ...typography.meta, fontSize: 12, color: color.textMuted, marginTop: 2 },
 });

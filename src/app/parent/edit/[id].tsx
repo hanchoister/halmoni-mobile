@@ -102,7 +102,7 @@ export default function EditParentScreen() {
   if (!parent) {
     return (
       <Screen>
-        <EmptyState emoji="🌿" title="Not found" message="That parent no longer exists." />
+        <EmptyState icon="leaf" title="Not found" message="That parent no longer exists." />
         <Button title="Back" onPress={() => router.back()} variant="secondary" />
       </Screen>
     );

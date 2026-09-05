@@ -121,7 +121,7 @@ export default function VisitMode() {
   if (!appt) {
     return (
       <Screen>
-        <EmptyState emoji="🩺" title="Not found" message="This appointment may have been removed." />
+        <EmptyState icon="visits" title="Not found" message="This appointment may have been removed." />
       </Screen>
     );
   }

@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Pill } from '@/components/ui/pill';
 import { Screen } from '@/components/ui/screen';
+import { Icon } from '@/components/ui/icon';
 import { list } from '@/lib/db/repository';
 import { useDataVersion } from '@/lib/db/signal';
 import { useFamily } from '@/lib/family';
@@ -18,7 +19,7 @@ import { newId } from '@/lib/newid';
 import { useParents } from '@/lib/parent';
 import { supabase } from '@/lib/supabase';
 import { writeRow } from '@/lib/sync/write-path';
-import { palette, radius, spacing } from '@/lib/theme';
+import { color, fontFamily, palette, radius, spacing, typography } from '@/lib/theme';
 
 type ThreadRow = {
   id: string;
@@ -166,7 +167,7 @@ export default function FamilyScreen() {
   if (!currentParent) {
     return (
       <Screen>
-        <EmptyState emoji="🌿" title="No parent yet" message="Add a parent to set up your family." />
+        <EmptyState icon="leaf" title="No parent yet" message="Add a parent to set up your family." />
       </Screen>
     );
   }
@@ -241,7 +242,10 @@ export default function FamilyScreen() {
                   </View>
                   {s.phone && !isYou && (
                     <Pressable onPress={() => Linking.openURL(`tel:${s.phone}`)}>
-                      <Text style={styles.phoneLink}>📞 {s.phone}</Text>
+                      <View style={styles.phoneRow}>
+                        <Icon name="phone" size={13} color={color.accent} strokeWidth={2} />
+                        <Text style={styles.phoneLink}>{s.phone}</Text>
+                      </View>
                     </Pressable>
                   )}
                 </View>
@@ -332,7 +336,8 @@ export default function FamilyScreen() {
 }
 
 const styles = StyleSheet.create({
-  handoffNoSummary: { fontSize: 13, color: palette.ink300, fontStyle: 'italic' },
+  phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  handoffNoSummary: { ...typography.meta, color: palette.ink300, fontStyle: 'italic' },
   inviteBox: {
     backgroundColor: palette.cream100,
     borderRadius: radius.md,
@@ -341,20 +346,20 @@ const styles = StyleSheet.create({
   },
   inviteLabel: {
     fontSize: 10,
-    fontWeight: '700',
+    fontFamily: fontFamily.sansBold,
     color: palette.ink500,
     letterSpacing: 1,
   },
   inviteCode: {
     fontSize: 30,
-    fontWeight: '700',
+    fontFamily: fontFamily.sansBold,
     letterSpacing: 4,
     color: palette.ink900,
     marginVertical: 4,
   },
-  inviteHint: { fontSize: 12, color: palette.ink500 },
+  inviteHint: { ...typography.meta, fontSize: 12, color: palette.ink500 },
   inviteReplace: {
-    fontSize: 12,
+    ...typography.meta, fontSize: 12,
     color: palette.ink500,
     textDecorationLine: 'underline',
     marginTop: spacing.sm,
@@ -362,10 +367,10 @@ const styles = StyleSheet.create({
   },
   inviteActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
   inviteBtn: { flex: 1 },
-  sectionLabel: { fontSize: 11, fontWeight: '700', color: palette.ink500, letterSpacing: 1 },
+  sectionLabel: { fontSize: 11, fontFamily: fontFamily.sansBold, color: palette.ink500, letterSpacing: 1 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
-  linkText: { fontSize: 13, color: palette.sage600, fontWeight: '600' },
-  empty: { fontSize: 13, color: palette.ink500, marginTop: spacing.sm },
+  linkText: { ...typography.meta, color: palette.sage600 },
+  empty: { ...typography.meta, color: palette.ink500, marginTop: spacing.sm },
   siblingGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.sm },
   siblingCard: {
     flexBasis: '47%',
@@ -373,18 +378,18 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     gap: 4,
   },
-  siblingName: { fontSize: 14, fontWeight: '600', color: palette.ink900, marginTop: 4 },
-  siblingSub: { fontSize: 11, color: palette.ink500 },
+  siblingName: { ...typography.bodyStrong, color: palette.ink900, marginTop: 4 },
+  siblingSub: { fontFamily: fontFamily.sans, fontSize: 11, color: palette.ink500 },
   siblingPills: { flexDirection: 'row', gap: 4, marginTop: 2 },
-  phoneLink: { fontSize: 12, color: palette.sage600, marginTop: 4 },
+  phoneLink: { ...typography.meta, fontSize: 12, color: palette.sage600, marginTop: 4 },
   messageRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm, alignItems: 'flex-end' },
   messageRowMine: { flexDirection: 'row-reverse' },
   bubble: { maxWidth: '78%', borderRadius: radius.md, padding: spacing.sm },
   bubbleMine: { backgroundColor: palette.sage500 },
   bubbleTheirs: { backgroundColor: palette.cream100 },
-  bubbleAuthor: { fontSize: 11, fontWeight: '700', color: palette.ink500, marginBottom: 2 },
-  bubbleBody: { fontSize: 13, color: palette.ink900, lineHeight: 18 },
-  bubbleTime: { fontSize: 10, color: palette.ink500, marginTop: 4 },
+  bubbleAuthor: { fontSize: 11, fontFamily: fontFamily.sansBold, color: palette.ink500, marginBottom: 2 },
+  bubbleBody: { ...typography.meta, color: palette.ink900, lineHeight: 18 },
+  bubbleTime: { fontFamily: fontFamily.sans, fontSize: 10, color: palette.ink500, marginTop: 4 },
   composeRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md, alignItems: 'flex-end' },
   composeInput: {
     flex: 1,
@@ -395,13 +400,13 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    fontSize: 14,
+    ...typography.meta,
     color: palette.ink900,
     backgroundColor: palette.white,
   },
   handoffRow: { paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: palette.cream100 },
-  handoffNames: { fontSize: 13, fontWeight: '700', color: palette.ink900 },
-  handoffWhen: { fontSize: 11, color: palette.ink500, marginTop: 2 },
-  handoffSummary: { fontSize: 13, color: palette.ink700, marginTop: 4 },
-  handoffMessage: { fontSize: 12, color: palette.ink500, marginTop: 4, fontStyle: 'italic' },
+  handoffNames: { ...typography.bodyStrong, color: palette.ink900 },
+  handoffWhen: { fontFamily: fontFamily.sans, fontSize: 11, color: palette.ink500, marginTop: 2 },
+  handoffSummary: { ...typography.meta, color: palette.ink700, marginTop: 4 },
+  handoffMessage: { ...typography.meta, fontSize: 12, color: palette.ink500, marginTop: 4, fontStyle: 'italic' },
 });

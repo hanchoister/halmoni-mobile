@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View, ViewStyle } from 'react-native';
 
 import { SyncBanner } from '@/components/ui/sync-banner';
-import { palette, spacing } from '@/lib/theme';
+import { color, spacing } from '@/lib/theme';
 
 export function Screen({
   children,
@@ -43,6 +43,6 @@ export function Screen({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: palette.cream50 },
+  container: { flex: 1, backgroundColor: color.bg },
   padded: { padding: spacing.lg, gap: spacing.md },
 });

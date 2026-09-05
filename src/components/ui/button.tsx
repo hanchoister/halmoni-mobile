@@ -1,8 +1,30 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, ViewStyle } from 'react-native';
 
-import { palette, radius, spacing } from '@/lib/theme';
+import { color, palette, radius, spacing, typography } from '@/lib/theme';
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
+/**
+ * `primary` is the deep sage anchor — the one filled, unmissable action on a
+ * screen. `accent` is terracotta and means "this is asking something of you"
+ * (add a finding to visit prep, refill a prescription); it is deliberately
+ * scarce, because a colour that appears everywhere stops meaning anything.
+ */
+type Variant = 'primary' | 'accent' | 'secondary' | 'ghost' | 'danger';
+
+const fill: Record<Variant, string> = {
+  primary: color.hero,
+  accent: color.accent,
+  secondary: color.surface,
+  ghost: 'transparent',
+  danger: color.accent,
+};
+
+const label: Record<Variant, string> = {
+  primary: color.onHero,
+  accent: color.onFill,
+  secondary: color.text,
+  ghost: color.textMuted,
+  danger: color.onFill,
+};
 
 export function Button({
   title,
@@ -19,29 +41,19 @@ export function Button({
   variant?: Variant;
   style?: ViewStyle;
 }) {
-  const bg =
-    variant === 'primary'
-      ? palette.sage500
-      : variant === 'secondary'
-        ? palette.cream100
-        : variant === 'danger'
-          ? palette.terracotta500
-          : 'transparent';
-  const fg =
-    variant === 'primary' || variant === 'danger'
-      ? palette.white
-      : variant === 'secondary'
-        ? palette.ink900
-        : palette.ink500;
-  const border = variant === 'secondary' ? palette.cream200 : 'transparent';
+  const bg = fill[variant];
+  const fg = label[variant];
 
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled || busy}
-      style={[
+      accessibilityRole="button"
+      style={({ pressed }) => [
         styles.button,
-        { backgroundColor: bg, borderColor: border, borderWidth: variant === 'secondary' ? 1 : 0 },
+        { backgroundColor: bg },
+        variant === 'secondary' && styles.outlined,
+        pressed && styles.pressed,
         (disabled || busy) && styles.disabled,
         style,
       ]}>
@@ -56,12 +68,19 @@ export function Button({
 
 const styles = StyleSheet.create({
   button: {
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
+    paddingVertical: spacing.md + 2,
+    paddingHorizontal: spacing.xl,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  text: { fontSize: 15, fontWeight: '700' },
-  disabled: { opacity: 0.55 },
+  outlined: {
+    borderWidth: 1,
+    borderColor: palette.cream200,
+  },
+  // Custom families carry their own weight, so `fontWeight` is deliberately
+  // absent — setting both makes Android synthesise a second, wrong bold.
+  text: { ...typography.bodyStrong },
+  pressed: { opacity: 0.82 },
+  disabled: { opacity: 0.45 },
 });

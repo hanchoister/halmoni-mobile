@@ -36,7 +36,7 @@ export default function HandoffScreen() {
   if (!currentParent || !me) {
     return (
       <Screen>
-        <EmptyState emoji="🌿" title="Not ready" message="Add a parent and finish setup first." />
+        <EmptyState icon="leaf" title="Not ready" message="Add a parent and finish setup first." />
       </Screen>
     );
   }
@@ -45,7 +45,7 @@ export default function HandoffScreen() {
     return (
       <Screen>
         <EmptyState
-          emoji="🤝"
+          icon="handoff"
           title="No one to hand off to"
           message="Invite a sibling on the Family tab first."
         />

@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { analyzeSymptoms, type Finding } from '@/lib/detective';
 import { daysBetween, formatDateShort } from '@/lib/format';
-import { palette, spacing } from '@/lib/theme';
+import { Icon, IconName } from '@/components/ui/icon';
+import { color, palette, spacing, typography } from '@/lib/theme';
 
 type Med = {
   id: string;
@@ -43,6 +44,19 @@ type Item =
       summary: string;
       personalMessage: string | null;
     };
+
+function Eyebrow({ tone, label, icon }: { tone: string; label: string; icon?: IconName }) {
+  return (
+    <View style={styles.eyebrow}>
+      {icon ? (
+        <Icon name={icon} size={13} color={tone} strokeWidth={2.1} />
+      ) : (
+        <View style={[styles.dot, { backgroundColor: tone }]} />
+      )}
+      <Text style={[styles.eyebrowText, { color: tone }]}>{label}</Text>
+    </View>
+  );
+}
 
 export function HeadsUp({
   meds,
@@ -133,21 +147,17 @@ export function HeadsUp({
         if (it.kind === 'refill') {
           return (
             <Card key={it.key} tint="warm">
-              <Pressable
-                onPress={() => router.push('/(tabs)/meds')}
-                style={styles.row}>
-                <Text style={styles.emoji}>🔄</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.title}>
-                    {it.medName} runs out{' '}
-                    {it.daysLeft <= 0
-                      ? 'today'
-                      : it.daysLeft === 1
-                        ? 'tomorrow'
-                        : `in ${it.daysLeft} days`}
-                  </Text>
-                  <Text style={styles.hint}>Refill at the pharmacy or have it delivered.</Text>
-                </View>
+              <Pressable onPress={() => router.push('/(tabs)/meds')}>
+                <Eyebrow tone={color.accent} label="NEEDS YOU" icon="meds" />
+                <Text style={styles.title}>
+                  {it.medName} runs out{' '}
+                  {it.daysLeft <= 0
+                    ? 'today'
+                    : it.daysLeft === 1
+                      ? 'tomorrow'
+                      : `in ${it.daysLeft} days`}
+                </Text>
+                <Text style={styles.hint}>Refill at the pharmacy, or have it delivered.</Text>
               </Pressable>
             </Card>
           );
@@ -155,7 +165,6 @@ export function HeadsUp({
         if (it.kind === 'finding') {
           const f = it.finding;
           const isUrgent = f.tier === 'urgent';
-          const emoji = isUrgent ? '🚨' : '📝';
           const title = isUrgent
             ? `Call the doctor today about ${f.medName}`
             : `Mention at the next ${f.medName} visit`;
@@ -164,11 +173,13 @@ export function HeadsUp({
               key={it.key}
               tint="warm"
               style={isUrgent ? { borderColor: palette.terracotta600, borderWidth: 2 } : undefined}>
-              <Pressable
-                onPress={() => router.push(`/medication/${f.medId}`)}
-                style={styles.row}>
-                <Text style={styles.emoji}>{emoji}</Text>
-                <View style={{ flex: 1 }}>
+              <Pressable onPress={() => router.push(`/medication/${f.medId}`)}>
+                <Eyebrow
+                  tone={color.accent}
+                  label={isUrgent ? 'CALL TODAY' : 'WORTH ASKING ABOUT'}
+                  icon={isUrgent ? 'alert' : undefined}
+                />
+                <View>
                   <Text style={styles.title}>{title}</Text>
                   {f.symptoms.slice(0, 3).map((s) => (
                     <Text key={s.id} style={styles.hint}>
@@ -191,9 +202,9 @@ export function HeadsUp({
         return (
           <Card key={it.key} tint="sage">
             <View style={{ gap: spacing.sm }}>
-              <View style={styles.row}>
-                <Text style={styles.emoji}>💬</Text>
-                <Text style={styles.title}>Hand-off from {it.from}</Text>
+              <View>
+                <Eyebrow tone={color.onConfirmSoft} label={`HAND-OFF FROM ${it.from.toUpperCase()}`} />
+                <Text style={styles.title}>Over to you</Text>
               </View>
               <Text style={styles.body}>{it.summary}</Text>
               {it.personalMessage && (
@@ -225,27 +236,23 @@ export function HeadsUp({
 }
 
 const styles = StyleSheet.create({
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: palette.ink500,
-    letterSpacing: 1,
-    marginBottom: spacing.sm,
+  sectionLabel: { ...typography.label, color: color.textMuted, marginBottom: spacing.sm },
+  groupLabel: { ...typography.label, color: color.textFaint, paddingHorizontal: 4 },
+  quiet: { ...typography.meta, color: color.textMuted },
+  eyebrow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: spacing.sm },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  eyebrowText: { ...typography.label, fontSize: 10 },
+  // The headline is the serif. These cards are the app talking to you about
+  // your mother — the one place a display face earns its keep.
+  title: { ...typography.displaySm, color: color.text },
+  hint: { ...typography.meta, color: color.textMuted, marginTop: 5 },
+  body: { ...typography.body, color: color.text },
+  italic: {
+    ...typography.meta,
+    fontFamily: undefined,
+    color: color.onConfirmSoft,
+    fontStyle: 'italic',
   },
-  groupLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: palette.ink500,
-    letterSpacing: 1,
-    paddingHorizontal: 4,
-  },
-  quiet: { fontSize: 13, color: palette.ink500 },
-  row: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
-  emoji: { fontSize: 22 },
-  title: { fontSize: 14, fontWeight: '700', color: palette.ink900 },
-  hint: { fontSize: 12, color: palette.ink500, marginTop: 4, lineHeight: 16 },
-  body: { fontSize: 13, color: palette.ink700, lineHeight: 18 },
-  italic: { fontSize: 12, color: palette.sage700, fontStyle: 'italic' },
   patternsLink: { paddingVertical: spacing.sm, paddingHorizontal: 4 },
-  patternsText: { fontSize: 13, color: palette.sage600, fontWeight: '600' },
+  patternsText: { ...typography.bodyStrong, fontSize: 13, color: color.accent },
 });

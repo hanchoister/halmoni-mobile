@@ -7,11 +7,12 @@ import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Pill } from '@/components/ui/pill';
 import { Screen } from '@/components/ui/screen';
+import { Icon } from '@/components/ui/icon';
 import { getById, list } from '@/lib/db/repository';
 import { useDataVersion } from '@/lib/db/signal';
 import { formatDate, formatRelative, formatTime } from '@/lib/format';
 import { deleteRow, writeRow } from '@/lib/sync/write-path';
-import { palette, spacing } from '@/lib/theme';
+import { color, palette, spacing } from '@/lib/theme';
 
 type Appt = {
   id: string;
@@ -126,7 +127,7 @@ export default function AppointmentDetailScreen() {
   if (!appt) {
     return (
       <Screen>
-        <EmptyState emoji="🩺" title="Not found" message="This appointment may have been removed." />
+        <EmptyState icon="visits" title="Not found" message="This appointment may have been removed." />
       </Screen>
     );
   }
@@ -143,8 +144,18 @@ export default function AppointmentDetailScreen() {
           <Pill label={formatTime(appt.starts_at)} tone="cream" />
         </View>
         <Text style={styles.heading}>{appt.provider_name}</Text>
-        {appt.specialty && <Text style={styles.sub}>🩺 {appt.specialty}</Text>}
-        {appt.location && <Text style={styles.sub}>📍 {appt.location}</Text>}
+        {appt.specialty && (
+            <View style={styles.metaRow}>
+              <Icon name="visits" size={14} color={color.textMuted} />
+              <Text style={styles.sub}>{appt.specialty}</Text>
+            </View>
+          )}
+        {appt.location && (
+            <View style={styles.metaRow}>
+              <Icon name="location" size={14} color={color.textMuted} />
+              <Text style={styles.sub}>{appt.location}</Text>
+            </View>
+          )}
         <View style={{ height: spacing.md }} />
         <Button
           title={appt.status === 'upcoming' ? 'Start Visit Mode' : 'Reopen visit notes'}
@@ -200,6 +211,7 @@ export default function AppointmentDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4 },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: spacing.sm },
   heading: { fontSize: 22, fontWeight: '800', color: palette.ink900 },
   sub: { fontSize: 13, color: palette.ink500, marginTop: 4 },

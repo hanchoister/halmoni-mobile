@@ -1,32 +1,36 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { palette, radius } from '@/lib/theme';
+import { color, palette, radius, typography } from '@/lib/theme';
 
 export function Pill({
   label,
   tone = 'neutral',
 }: {
   label: string;
-  tone?: 'neutral' | 'sage' | 'terracotta' | 'butter' | 'cream';
+  tone?: 'neutral' | 'sage' | 'terracotta' | 'butter' | 'cream' | 'solid';
 }) {
   const bg =
     tone === 'sage'
-      ? palette.sage100
+      ? color.confirmSoft
       : tone === 'terracotta'
-        ? palette.terracotta100
+        ? color.accentSoft
         : tone === 'butter'
-          ? palette.butter100
+          ? color.warnSoft
           : tone === 'cream'
             ? palette.cream200
-            : palette.cream100;
+            : tone === 'solid'
+              ? color.accent
+              : color.surfaceAlt;
   const fg =
     tone === 'sage'
-      ? palette.sage700
+      ? color.onConfirmSoft
       : tone === 'terracotta'
-        ? palette.terracotta700
+        ? color.onAccentSoft
         : tone === 'butter'
           ? '#6b5b18'
-          : palette.ink700;
+          : tone === 'solid'
+            ? color.onFill
+            : color.textMuted;
   return (
     <View style={[styles.pill, { backgroundColor: bg }]}>
       <Text style={[styles.text, { color: fg }]}>{label}</Text>
@@ -42,11 +46,16 @@ const styles = StyleSheet.create({
   // instead, which keeps the whole condition readable.
   pill: {
     paddingHorizontal: 10,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: radius.pill,
     alignSelf: 'flex-start',
     flexShrink: 1,
     maxWidth: '100%',
   },
-  text: { fontSize: 11, fontWeight: '600' },
+  text: {
+    fontFamily: typography.label.fontFamily,
+    fontSize: 10.5,
+    lineHeight: 14,
+    letterSpacing: 0.1,
+  },
 });

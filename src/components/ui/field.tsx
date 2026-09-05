@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
 
-import { palette, radius, spacing } from '@/lib/theme';
+import { color, palette, radius, spacing, typography } from '@/lib/theme';
 
 export function Field({
   label,
@@ -26,7 +26,7 @@ export function Field({
 export function Input(props: TextInputProps) {
   return (
     <TextInput
-      placeholderTextColor={palette.ink300}
+      placeholderTextColor={color.textFaint}
       {...props}
       style={[styles.input, props.multiline && styles.multiline, props.style]}
     />
@@ -36,22 +36,20 @@ export function Input(props: TextInputProps) {
 const styles = StyleSheet.create({
   field: { gap: 2 },
   label: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: palette.ink500,
-    letterSpacing: 1,
+    ...typography.label,
+    color: color.textMuted,
     textTransform: 'uppercase',
   },
-  required: { color: palette.terracotta500 },
+  required: { color: color.accent },
   input: {
     borderWidth: 1,
     borderColor: palette.cream200,
-    backgroundColor: palette.white,
+    backgroundColor: color.surface,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    fontSize: 14,
-    color: palette.ink900,
+    paddingVertical: spacing.md,
+    ...typography.body,
+    color: color.text,
   },
   multiline: { minHeight: 80, textAlignVertical: 'top' },
 });

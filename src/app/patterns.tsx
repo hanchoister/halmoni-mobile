@@ -109,7 +109,7 @@ export default function PatternsScreen() {
   if (!currentParent) {
     return (
       <Screen>
-        <EmptyState emoji="🌿" title="No parent yet" message="Add a parent first." />
+        <EmptyState icon="leaf" title="No parent yet" message="Add a parent first." />
       </Screen>
     );
   }
@@ -127,7 +127,7 @@ export default function PatternsScreen() {
 
       {findings.length === 0 ? (
         <EmptyState
-          emoji="🌿"
+          icon="leaf"
           title="Nothing to ask about"
           message="Nothing to review right now. Log symptoms as you notice them and they'll be matched here."
         />

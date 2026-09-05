@@ -9,13 +9,14 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/field';
 import { Pill } from '@/components/ui/pill';
 import { Screen } from '@/components/ui/screen';
+import { Icon } from '@/components/ui/icon';
 import { getById, list } from '@/lib/db/repository';
 import { useDataVersion } from '@/lib/db/signal';
 import { formatDateShort, formatRelative } from '@/lib/format';
 import { useMe } from '@/lib/me';
 import { newId } from '@/lib/newid';
 import { deleteRow, writeRow } from '@/lib/sync/write-path';
-import { palette, radius, spacing } from '@/lib/theme';
+import { color, palette, radius, spacing } from '@/lib/theme';
 
 type Med = {
   id: string;
@@ -161,7 +162,7 @@ export default function MedicationDetailScreen() {
   if (!med) {
     return (
       <Screen>
-        <EmptyState emoji="💊" title="Medication not found" message="It may have been removed." />
+        <EmptyState icon="meds" title="Medication not found" message="It may have been removed." />
       </Screen>
     );
   }
@@ -177,7 +178,9 @@ export default function MedicationDetailScreen() {
       <Card>
         <View style={styles.headerRow}>
           <View style={styles.pillIcon}>
-            <Text style={styles.pillEmoji}>💊</Text>
+            <View style={styles.pillIcon}>
+            <Icon name="meds" size={20} color={color.confirm} strokeWidth={2} />
+          </View>
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.name}>{med.name}</Text>

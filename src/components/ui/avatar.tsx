@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { initialOf } from '@/lib/format';
-import { memberColorHex, MemberColor, palette } from '@/lib/theme';
+import { fontFamily, memberColorHex, MemberColor, palette } from '@/lib/theme';
 
 export function Avatar({
   name,
@@ -25,5 +25,5 @@ export function Avatar({
 
 const styles = StyleSheet.create({
   avatar: { alignItems: 'center', justifyContent: 'center' },
-  initial: { color: palette.white, fontWeight: '700' },
+  initial: { color: palette.white, fontFamily: fontFamily.sansBold },
 });

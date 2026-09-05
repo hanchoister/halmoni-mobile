@@ -8,10 +8,11 @@ import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Pill } from '@/components/ui/pill';
 import { Screen } from '@/components/ui/screen';
+import { Icon } from '@/components/ui/icon';
 import { shareCareKit } from '@/lib/care-kit';
 import { calcAge } from '@/lib/format';
 import { useParents } from '@/lib/parent';
-import { palette, radius, spacing } from '@/lib/theme';
+import { color, palette, radius, spacing } from '@/lib/theme';
 
 // Spelled out rather than shown raw: "no" meaning "full code" is exactly the
 // kind of ambiguity that must not exist on an emergency screen.
@@ -42,7 +43,7 @@ export default function ProfileScreen() {
   if (!currentParent) {
     return (
       <Screen>
-        <EmptyState emoji="🌿" title="No parent yet" message="Add a parent to get started." />
+        <EmptyState icon="leaf" title="No parent yet" message="Add a parent to get started." />
         <Button title="Add a parent" onPress={() => router.push('/parent/new')} />
       </Screen>
     );
@@ -89,7 +90,7 @@ export default function ProfileScreen() {
           <Text style={styles.sectionLabel}>ALLERGIES</Text>
           <View style={styles.pillRow}>
             {currentParent.allergies.map((a) => (
-              <Pill key={a} label={`⚠ ${a}`} tone="terracotta" />
+              <Pill key={a} label={a} tone="terracotta" />
             ))}
           </View>
         </Card>
@@ -125,9 +126,10 @@ export default function ProfileScreen() {
                     onPress={() =>
                       Linking.openURL(`tel:${currentParent.healthcare_proxy!.phone}`)
                     }>
-                    <Text style={styles.phoneLink}>
-                      📞 {currentParent.healthcare_proxy.phone}
-                    </Text>
+                    <View style={styles.phoneRow}>
+                      <Icon name="phone" size={13} color={color.accent} strokeWidth={2} />
+                      <Text style={styles.phoneLink}>{currentParent.healthcare_proxy.phone}</Text>
+                    </View>
                   </Pressable>
                 ) : null}
               </View>
@@ -148,7 +150,10 @@ export default function ProfileScreen() {
                 <Text style={styles.iceName}>{c.name}</Text>
                 <Text style={styles.iceSub}>{c.relation}</Text>
               </View>
-              <Text style={styles.phoneLink}>📞 {c.phone}</Text>
+              <View style={styles.phoneRow}>
+                <Icon name="phone" size={13} color={color.accent} strokeWidth={2} />
+                <Text style={styles.phoneLink}>{c.phone}</Text>
+              </View>
             </Pressable>
           ))}
         </Card>
@@ -160,7 +165,10 @@ export default function ProfileScreen() {
             <Text style={styles.sectionLabel}>PRIMARY DOCTOR</Text>
             <Text style={styles.detailValue}>{currentParent.primary_doctor.name}</Text>
             <Pressable onPress={() => Linking.openURL(`tel:${currentParent.primary_doctor!.phone}`)}>
-              <Text style={styles.phoneLink}>📞 {currentParent.primary_doctor.phone}</Text>
+              <View style={styles.phoneRow}>
+                <Icon name="phone" size={13} color={color.accent} strokeWidth={2} />
+                <Text style={styles.phoneLink}>{currentParent.primary_doctor.phone}</Text>
+              </View>
             </Pressable>
           </Card>
         )}
@@ -169,7 +177,10 @@ export default function ProfileScreen() {
             <Text style={styles.sectionLabel}>PHARMACY</Text>
             <Text style={styles.detailValue}>{currentParent.pharmacy.name}</Text>
             <Pressable onPress={() => Linking.openURL(`tel:${currentParent.pharmacy!.phone}`)}>
-              <Text style={styles.phoneLink}>📞 {currentParent.pharmacy.phone}</Text>
+              <View style={styles.phoneRow}>
+                <Icon name="phone" size={13} color={color.accent} strokeWidth={2} />
+                <Text style={styles.phoneLink}>{currentParent.pharmacy.phone}</Text>
+              </View>
             </Pressable>
           </Card>
         )}
@@ -212,7 +223,7 @@ export default function ProfileScreen() {
       )}
 
       <Button
-        title="🩺 Share Care Kit (PDF)"
+        title="Share Care Kit (PDF)"
         onPress={onShareCareKit}
         busy={exporting}
       />
@@ -228,6 +239,7 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
+  phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   wishRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
