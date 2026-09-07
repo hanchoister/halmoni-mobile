@@ -10,7 +10,7 @@ import {
 } from '@expo-google-fonts/inter';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, View } from 'react-native';
 
 import { LoginScreen } from '@/components/login-screen';
@@ -133,6 +133,24 @@ function RootNavigator() {
   const { session, loading } = useAuth();
   const demoMode = useDemoMode();
   const [showLogin, setShowLogin] = useState(false);
+  // Signing out has to return you to the welcome screen, not the email form.
+  // showLogin is set when "Log in / create account" is tapped and was never
+  // cleared, so after a sign-out the tree fell straight through to
+  // <LoginScreen /> — with no way back to "See the live demo" short of
+  // reloading the app.
+  //
+  // Only reset on the transition OUT of a session. Clearing it whenever
+  // `session` is null would eject the user from the login form the moment they
+  // opened it, since they have no session while signing in.
+  const hadSession = useRef(false);
+  useEffect(() => {
+    if (session) {
+      hadSession.current = true;
+    } else if (hadSession.current) {
+      hadSession.current = false;
+      setShowLogin(false);
+    }
+  }, [session]);
   // Appetize / resume build auto-enters demo. Set EXPO_PUBLIC_START_IN_DEMO=1
   // when exporting for the public demo build.
   useEffect(() => {

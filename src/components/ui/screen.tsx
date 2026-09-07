@@ -34,6 +34,7 @@ export function Screen({
         style={styles.container}
         contentContainerStyle={[padded && styles.padded, style]}
         refreshControl={refreshControl}
+        contentInsetAdjustmentBehavior="never"
         keyboardShouldPersistTaps="handled">
         <SyncBanner />
         {children}

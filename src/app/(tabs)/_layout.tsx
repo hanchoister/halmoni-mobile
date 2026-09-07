@@ -1,5 +1,5 @@
 import { router, Tabs } from 'expo-router';
-import { Pressable } from 'react-native';
+import { Pressable, type ColorValue } from 'react-native';
 
 import { Icon, IconName } from '@/components/ui/icon';
 import { color, fontFamily, palette, spacing } from '@/lib/theme';
@@ -26,7 +26,7 @@ function AccountButton() {
 // active tab was only ever signalled by its label. These take the tint, and
 // fill when active.
 function tabIcon(name: IconName) {
-  function TabIcon({ color: tint, focused }: { color: string; focused: boolean }) {
+  function TabIcon({ color: tint, focused }: { color: ColorValue; focused: boolean }) {
     return <Icon name={name} size={23} color={tint} filled={focused} />;
   }
   return TabIcon;

@@ -1,3 +1,4 @@
+import type { ColorValue } from 'react-native';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 
 import { color as themeColor } from '@/lib/theme';
@@ -48,7 +49,7 @@ export function Icon({
 }: {
   name: IconName;
   size?: number;
-  color?: string;
+  color?: ColorValue;
   /** Marks the active state — fills the glyph body at 18% of `color`. */
   filled?: boolean;
   strokeWidth?: number;
