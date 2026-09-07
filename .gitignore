@@ -43,3 +43,4 @@ example
 /android
 
 .scrub-build
+.verify-build

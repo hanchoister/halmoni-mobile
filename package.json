@@ -58,8 +58,10 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "verify:scrub": "tsc src/lib/reliability/sentry-scrub.ts --outDir .scrub-build --module commonjs --target es2020 --skipLibCheck && node scripts/verify-sentry-scrubbing.js .scrub-build/sentry-scrub.js",
-    "verify": "tsc --noEmit && expo lint && npm run verify:scrub"
+    "verify:scrub": "tsc src/lib/reliability/sentry-scrub.ts --ignoreConfig --outDir .scrub-build --module commonjs --target es2020 --skipLibCheck && node scripts/verify-sentry-scrubbing.js .scrub-build/sentry-scrub.js",
+    "verify": "tsc --noEmit && expo lint && npm run verify:contracts && npm run verify:logic && npm run verify:scrub",
+    "verify:logic": "tsc src/lib/validate-dob.ts src/lib/reliability/sentry-scrub.ts --ignoreConfig --outDir .verify-build --module commonjs --target es2020 --skipLibCheck && node scripts/verify-logic.js .verify-build",
+    "verify:contracts": "node scripts/verify-contracts.js"
   },
   "private": true
 }

@@ -26,5 +26,9 @@ jobs:
         run: npx tsc --noEmit
       - name: Lint
         run: npx expo lint
+      - name: Contracts — no table or rpc without a migration
+        run: npm run verify:contracts
+      - name: Logic — dates and PHI scrubbing
+        run: npm run verify:logic
       - name: Sentry scrubbing must not leak PHI
         run: npm run verify:scrub
