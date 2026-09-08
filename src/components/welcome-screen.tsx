@@ -26,14 +26,14 @@ export function WelcomeScreen({ onTryDemo, onLogIn }: Props) {
         <View style={styles.hero}>
           <HalmoniMark size={96} />
           <Text style={styles.title}>Halmoni</Text>
-          <Text style={styles.tagline}>Share the load. Care for your parent — together.</Text>
+          <Text style={styles.tagline}>{"Everything about your parent's care, in one place."}</Text>
         </View>
 
         <View style={styles.bulletList}>
           <Text style={styles.bullet}>
             <Icon name="meds" size={17} color={color.confirm} />
             <Text style={styles.bulletText}>
-              Track meds, doses, and refills in one place your siblings can see.
+              Track meds, doses and refills in one place your whole family can see.
             </Text>
           </Text>
           <Text style={styles.bullet}>
