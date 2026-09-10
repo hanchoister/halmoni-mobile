@@ -4,6 +4,7 @@
 // Screens can migrate to these helpers incrementally — call sites still using
 // supabase.from() directly continue to work, they just skip the offline layer.
 
+import { validateConsent } from '@/lib/consent';
 import { getDb } from '@/lib/db/client';
 import { enqueueWrite, getById, softDelete, upsertRow } from '@/lib/db/repository';
 import type { SyncableTable } from '@/lib/db/schema';
@@ -32,11 +33,32 @@ function stampWrite(row: Record<string, any>): Record<string, any> {
   return { created_at: now, ...row, updated_at: now };
 }
 
+/**
+ * The last thing standing between a `parents` write and the mirror.
+ *
+ * Every layer below this one already refuses an unattested parent — the CHECK
+ * constraint, the trigger and the RLS policy on the server (G1-28) — but they
+ * all live on the far side of the network, and this app writes offline first.
+ * Without this guard a parent could be created on a plane, be shown on every
+ * screen for a week, and only fail on sync, by which point the family has
+ * entered a medication list against it.
+ *
+ * It is also the check a future screen cannot forget: writeRow is the only way
+ * into the mirror, so a new call site that omits the attestation throws here
+ * rather than discovering it in TestFlight.
+ */
+function guardParentConsent(table: SyncableTable, row: Record<string, any>) {
+  if (table !== 'parents') return;
+  const problem = validateConsent(row);
+  if (problem) throw new Error(problem);
+}
+
 /** Create or update a row. Row MUST include id. */
 export async function writeRow(
   table: SyncableTable,
   row: Record<string, any>,
 ): Promise<void> {
+  guardParentConsent(table, row);
   const stamped = stampWrite(row);
   await upsertRow(table, stamped);
   // Demo mode never talks to Supabase — skip the outbound queue so demo
@@ -58,6 +80,7 @@ export async function writeRows(
   rows: Record<string, any>[],
 ): Promise<void> {
   if (rows.length === 0) return;
+  for (const r of rows) guardParentConsent(table, r);
   const stamped = rows.map(stampWrite);
   const db = await getDb();
   const demo = isDemoMode();

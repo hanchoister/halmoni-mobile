@@ -6,7 +6,7 @@
 // JSON-shaped columns (arrays, objects) are stored as TEXT and parsed via the
 // repository. This keeps SQLite ↔ Postgres alignment simple.
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 // Ordered so foreign-key-referenced tables come first.
 export const CREATE_TABLE_SQL: string[] = [
@@ -54,6 +54,15 @@ export const CREATE_TABLE_SQL: string[] = [
     -- set on the web was invisible to whoever was holding the phone.
     dnr_status        TEXT,
     healthcare_proxy  TEXT,
+    -- Consent (G1-28). Nullable here on purpose, unlike the server: the mirror
+    -- is a cache, and a mirror that refuses to store a row it was handed would
+    -- break the app for a family rather than protect the parent. Enforcement
+    -- happens on the way IN — guardParentConsent() in sync/write-path.ts — and
+    -- again on the server, which is the only copy that matters legally.
+    consent_basis          TEXT,
+    consent_attested_at    TEXT,
+    consent_attested_by    TEXT,
+    consent_notice_version TEXT,
     created_at     TEXT NOT NULL,
     updated_at     TEXT NOT NULL,
     deleted_at     TEXT

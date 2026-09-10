@@ -5,8 +5,11 @@
 // so HeadsUp fires 3 cards on first load: refill soon, possible side effect,
 // pending handoff — telling the "share the load" + "peace of mind" story.
 
+import { CONSENT_NOTICE_VERSION } from '@/lib/consent';
+
 // Deterministic ID prefix helps debugging in the mock query builder.
 export const DEMO_FAMILY_ID = 'demo-fam-1';
+
 export const DEMO_PARENT_ID = 'demo-parent-1';
 export const DEMO_USER_ID = 'demo-user-1';
 
@@ -129,6 +132,13 @@ export function buildDemoStore(): DemoStore {
       family_id: DEMO_FAMILY_ID,
       name: 'Elena Smith',
       nickname: 'Mom',
+      // The demo has to show the same permission record a real family sees —
+      // a demo that skips the consent step teaches the wrong shape of the app
+      // to everyone who is shown it, reviewers included (G1-28).
+      consent_basis: 'parent_agreed',
+      consent_attested_at: daysAgo(200),
+      consent_attested_by: DEMO_USER_ID,
+      consent_notice_version: CONSENT_NOTICE_VERSION,
       photo_url: null,
       dob: '1950-03-14',
       conditions: [

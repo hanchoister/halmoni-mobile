@@ -10,8 +10,11 @@ import { Pill } from '@/components/ui/pill';
 import { Screen } from '@/components/ui/screen';
 import { Icon } from '@/components/ui/icon';
 import { shareCareKit } from '@/lib/care-kit';
+import { describeConsent, isConsentBasis } from '@/lib/consent';
 import { calcAge } from '@/lib/format';
 import { useParents } from '@/lib/parent';
+import { shareParentNotice } from '@/lib/parent-notice';
+import { useMe } from '@/lib/me';
 import { color, palette, radius, spacing } from '@/lib/theme';
 
 // Spelled out rather than shown raw: "no" meaning "full code" is exactly the
@@ -25,7 +28,29 @@ const DNR_LABEL: Record<string, string> = {
 
 export default function ProfileScreen() {
   const { parents, currentParent, setCurrentParentId } = useParents();
+  const { me } = useMe();
   const [exporting, setExporting] = useState(false);
+  const [printingNotice, setPrintingNotice] = useState(false);
+
+  // Reprinting the notice is the answer to "she asked what this app is" — the
+  // parent gets the same sheet they were meant to get on day one, without
+  // anyone having to explain it from memory (G1-28).
+  async function onPrintNotice() {
+    if (!currentParent || !isConsentBasis(currentParent.consent_basis)) return;
+    setPrintingNotice(true);
+    try {
+      await shareParentNotice({
+        parentName: currentParent.nickname || currentParent.name,
+        basis: currentParent.consent_basis,
+        contactName: me?.name ?? null,
+        version: currentParent.consent_notice_version ?? undefined,
+      });
+    } catch (e) {
+      Alert.alert('Could not make the notice', e instanceof Error ? e.message : String(e));
+    } finally {
+      setPrintingNotice(false);
+    }
+  }
 
   async function onShareCareKit() {
     if (!currentParent) return;
@@ -204,6 +229,18 @@ export default function ProfileScreen() {
         </Card>
       )}
 
+      {describeConsent(currentParent) && (
+        <Card>
+          <Text style={styles.sectionLabel}>PERMISSION ON RECORD</Text>
+          <Text style={styles.body}>{describeConsent(currentParent)}</Text>
+          <Pressable onPress={onPrintNotice} disabled={printingNotice}>
+            <Text style={styles.consentAction}>
+              {printingNotice ? 'Preparing…' : 'Print their notice again'}
+            </Text>
+          </Pressable>
+        </Card>
+      )}
+
       {parents.length > 1 && (
         <Card>
           <Text style={styles.sectionLabel}>SWITCH PARENT</Text>
@@ -253,6 +290,12 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
   name: { fontSize: 24, fontWeight: '800', color: palette.ink900 },
   sub: { fontSize: 13, color: palette.ink500, marginTop: 4 },
+  consentAction: {
+    fontSize: 13,
+    color: color.confirm,
+    marginTop: spacing.sm,
+    textDecorationLine: 'underline',
+  },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.sm },
   sectionLabel: {
     fontSize: 11,

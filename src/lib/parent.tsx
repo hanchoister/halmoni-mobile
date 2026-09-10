@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
+import type { ConsentBasis } from '@/lib/consent';
 import { list } from '@/lib/db/repository';
 import { useDataVersion } from '@/lib/db/signal';
 import { useFamily } from '@/lib/family';
@@ -43,6 +44,13 @@ export type ParentRow = {
   } | null;
   dnr_status: DnrStatus | null;
   healthcare_proxy: HealthcareProxy | null;
+  // Consent (G1-28). Nullable in the type only because rows created before the
+  // attestation existed can still be read — the write path refuses to save one
+  // without it, and the server refuses to accept one.
+  consent_basis: ConsentBasis | null;
+  consent_attested_at: string | null;
+  consent_attested_by: string | null;
+  consent_notice_version: string | null;
   created_at: string;
   updated_at: string;
 };

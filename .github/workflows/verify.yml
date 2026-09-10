@@ -28,6 +28,8 @@ jobs:
         run: npx expo lint
       - name: Contracts — no table or rpc without a migration
         run: npm run verify:contracts
+      - name: Consent — no parent's data without a recorded basis
+        run: npm run verify:consent
       - name: Logic — dates and PHI scrubbing
         run: npm run verify:logic
       - name: Sentry scrubbing must not leak PHI

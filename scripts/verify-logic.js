@@ -84,5 +84,51 @@ console.log('\nsentry scrubbing — health data must not reach a third party');
   });
 }
 
+console.log('\nparent consent — health data about someone who never signed up');
+{
+  const {
+    validateConsent,
+    buildConsent,
+    isConsentBasis,
+    CONSENT_BASES,
+    CONSENT_NOTICE_VERSION,
+    NOTICE_ARCHIVE,
+  } = load('consent.js');
+
+  const good = buildConsent('parent_agreed', 'user-1');
+  check('a complete attestation passes', () => {
+    assert.strictEqual(validateConsent(good), null);
+  });
+  check('a parent row with no basis is refused', () => {
+    assert.ok(validateConsent({ name: 'Elena' }), 'unattested row was accepted');
+  });
+  check('a made-up basis is refused', () => {
+    assert.ok(validateConsent({ ...good, consent_basis: 'she_probably_would' }));
+  });
+  for (const field of ['consent_attested_at', 'consent_attested_by', 'consent_notice_version']) {
+    check(`a half-filled attestation is refused (${field} missing)`, () => {
+      assert.ok(validateConsent({ ...good, [field]: null }), `${field} was allowed to be blank`);
+    });
+  }
+  check('an attestation dated in the future is refused', () => {
+    const soon = new Date(Date.now() + 5 * 86400000).toISOString();
+    assert.ok(validateConsent({ ...good, consent_attested_at: soon }));
+  });
+  // Deleting an unattested record left over from before this existed has to
+  // stay possible, or the data is trapped in the app forever.
+  check('a tombstone is exempt', () => {
+    assert.strictEqual(validateConsent({ deleted_at: new Date().toISOString() }), null);
+  });
+  check('buildConsent refuses an anonymous attestation', () => {
+    assert.throws(() => buildConsent('parent_agreed', ''));
+  });
+  check('every offered basis is a real one', () => {
+    for (const b of CONSENT_BASES) assert.ok(isConsentBasis(b), b);
+  });
+  check('the stored notice version resolves to actual wording', () => {
+    assert.ok(NOTICE_ARCHIVE[CONSENT_NOTICE_VERSION], 'no archived text for the current version');
+  });
+}
+
 console.log(failures === 0 ? '\nPASS: all logic checks' : `\nFAIL: ${failures} check(s)`);
 process.exit(failures === 0 ? 0 : 1);
