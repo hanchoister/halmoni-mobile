@@ -224,6 +224,25 @@ create trigger parents_record_consent
 -- The predicate matches the constraint exactly (tombstones exempt) because the
 -- sync engine deletes by upserting the whole row with deleted_at set, which
 -- PostgREST evaluates against the INSERT policy's WITH CHECK.
+--
+-- Production does not have the four policies 00000000000002 creates. Its
+-- tables were built by hand, and each carries a single permissive FOR ALL
+-- policy named "<table> rw" instead. Permissive policies OR together, so
+-- adding parents_insert beside "parents rw" would change nothing: any family
+-- member could still insert an unattested row through the older policy. Drop
+-- it, and restate select and delete exactly as 00000000000002 does, so the
+-- result is the same four policies on every database. On one built from these
+-- migrations, the drop is a no-op.
+drop policy if exists "parents rw" on parents;
+
+drop policy if exists parents_select on parents;
+create policy parents_select on parents
+  for select using (is_family_member(family_id));
+
+drop policy if exists parents_delete on parents;
+create policy parents_delete on parents
+  for delete using (is_family_member(family_id));
+
 drop policy if exists parents_insert on parents;
 create policy parents_insert on parents
   for insert with check (

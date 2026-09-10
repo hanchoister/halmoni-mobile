@@ -95,6 +95,11 @@ const updatePolicy = /create policy parents_update on parents[\s\S]*?;/i.exec(sq
 if (!updatePolicy || !/consent_basis is not null/i.test(updatePolicy[0])) {
   fail('the parents_update RLS policy no longer requires a consent basis');
 }
+// Production carries a hand-made permissive FOR ALL policy, "parents rw".
+// Permissive policies OR, so while it exists the two above are decoration.
+if (!/drop policy if exists "parents rw" on parents/i.test(sql)) {
+  fail('the migration no longer drops "parents rw" — on production that permissive policy lets unattested inserts through RLS');
+}
 
 // --- layer 2: the two lists of allowed bases must not drift ------------------
 const ts = read(CONSENT_TS);
