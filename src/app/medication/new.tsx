@@ -5,6 +5,7 @@ import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
 import { Screen } from '@/components/ui/screen';
+import { DOSE_HORIZON_DAYS, planTopUp } from '@/lib/dose-plan';
 import { newId } from '@/lib/newid';
 import { useParents } from '@/lib/parent';
 import { writeRow, writeRows } from '@/lib/sync/write-path';
@@ -39,37 +40,39 @@ export default function AddMedicationScreen() {
     setTimeInput('');
   }
 
+  // The first 90 days come from the same planner that tops the horizon up
+  // afterwards, so creation and maintenance cannot drift apart (G2-23).
+  //
+  // One deliberate behaviour change: it plans forward from now rather than from
+  // midnight, so adding a medication at 6pm no longer creates this morning's
+  // 8am dose already overdue. A dose nobody could have given is not a missed
+  // dose, and it used to land in the adherence record as one.
   function buildDoseRows(
     medId: string,
     familyId: string,
     parentId: string,
     schedule: { time: string }[],
   ) {
-    const rows: Record<string, unknown>[] = [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const nowIso = new Date().toISOString();
-    for (let dayOffset = 0; dayOffset < 90; dayOffset++) {
-      const day = new Date(today);
-      day.setDate(today.getDate() + dayOffset);
-      for (const slot of schedule) {
-        const [h, m] = slot.time.split(':').map((n) => parseInt(n, 10));
-        const sched = new Date(day);
-        sched.setHours(h, m, 0, 0);
-        rows.push({
-          id: newId(),
-          family_id: familyId,
-          medication_id: medId,
-          parent_id: parentId,
-          scheduled_at: sched.toISOString(),
-          given_at: null,
-          given_by_member_id: null,
-          skipped: false,
-          created_at: nowIso,
-        });
-      }
-    }
-    return rows;
+    const plan = planTopUp({
+      medicationId: medId,
+      schedule,
+      existing: [],
+      now: new Date(),
+      horizonDays: DOSE_HORIZON_DAYS,
+    });
+    return plan.create.map((d) => ({
+      id: d.id,
+      family_id: familyId,
+      medication_id: medId,
+      parent_id: parentId,
+      scheduled_at: d.scheduled_at,
+      given_at: null,
+      given_by_member_id: null,
+      skipped: false,
+      deleted_at: null,
+      created_at: nowIso,
+    }));
   }
 
   async function save() {

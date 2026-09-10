@@ -13,6 +13,7 @@ import {
   useState,
 } from 'react';
 
+import { topUpDoseHorizon } from '@/lib/dose-maintenance';
 import { syncOnce, SyncResult } from '@/lib/sync/engine';
 import { _registerSyncTrigger } from '@/lib/sync/write-path';
 
@@ -34,6 +35,43 @@ const SyncContext = createContext<SyncState>({
 
 const FOREGROUND_INTERVAL_MS = 30_000;
 const DEBOUNCE_MS = 400;
+
+// How often the dose horizon is topped up. The sync loop runs every 30s and
+// re-reading every medication's doses that often would be silly; a medication
+// only needs extending once it drops under 60 days of runway, so hourly is
+// generous. Zero on first call, so it always runs once after launch.
+const TOP_UP_INTERVAL_MS = 60 * 60_000;
+let lastTopUpAt = 0;
+
+/**
+ * Extend the dose horizon after a clean sync.
+ *
+ * After, not before: the mirror has to hold the doses another sibling's phone
+ * already created before this one decides they are missing. (Dose ids are
+ * derived from the medication and the instant, so even a genuine race converges
+ * on one row rather than two — this is belt as well as braces.)
+ *
+ * A run with errors is skipped, which means a device offline for two months
+ * would not top up. The horizon is 90 days and the threshold 60, so that is a
+ * month of slack before it could matter.
+ */
+async function maybeTopUpDoses() {
+  if (Date.now() - lastTopUpAt < TOP_UP_INTERVAL_MS) return;
+  lastTopUpAt = Date.now();
+  try {
+    const { created, medications } = await topUpDoseHorizon();
+    if (__DEV__ && created) {
+      console.log(`[doses] extended ${medications} medication(s), ${created} dose(s)`);
+    }
+  } catch (err) {
+    // Never let dose maintenance break sync status reporting. The next run
+    // retries; nothing here is one-shot.
+    lastTopUpAt = 0;
+    if (__DEV__) {
+      console.warn('[doses] top-up failed', err);
+    }
+  }
+}
 
 function isNetworkErrorMessage(msg: string): boolean {
   return /network|fetch|failed to fetch|offline|timed? out/i.test(msg);
@@ -70,6 +108,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       } else {
         setLastError(null);
         setStatus('synced');
+        await maybeTopUpDoses();
       }
 
       // Log pulled counts in dev only to aid debugging.

@@ -30,6 +30,8 @@ jobs:
         run: npm run verify:contracts
       - name: Consent — no parent's data without a recorded basis
         run: npm run verify:consent
+      - name: Doses — the horizon is refreshed, not minted once
+        run: npm run verify:doses
       - name: Logic — dates and PHI scrubbing
         run: npm run verify:logic
       - name: Sentry scrubbing must not leak PHI

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
 import { Screen } from '@/components/ui/screen';
 import { getById } from '@/lib/db/repository';
+import { rescheduleDoses } from '@/lib/dose-maintenance';
 import { writeRow } from '@/lib/sync/write-path';
 import { palette, radius, spacing } from '@/lib/theme';
 
@@ -76,6 +77,8 @@ export default function EditMedicationScreen() {
     setSaving(true);
     try {
       const schedule = times.map((t) => ({ time: t, withFood: withFood || undefined }));
+      const before = ((row.schedule ?? []) as Schedule[]).map((s) => s.time).sort().join(',');
+      const after = times.slice().sort().join(',');
       await writeRow('medications', {
         ...row,
         name: name.trim(),
@@ -88,6 +91,15 @@ export default function EditMedicationScreen() {
         pills_left: pillsLeft ? parseInt(pillsLeft, 10) : null,
         notes: notes.trim() || null,
       });
+      // Dose rows are a projection of the schedule, so a changed schedule has to
+      // be projected again. Doses already given or skipped, and anything in the
+      // past, are left alone — that is the adherence record (G2-25).
+      if (before !== after) {
+        await rescheduleDoses(
+          { id, family_id: row.family_id, parent_id: row.parent_id },
+          schedule,
+        );
+      }
       router.back();
     } catch (err) {
       Alert.alert('Could not save', err instanceof Error ? err.message : String(err));
@@ -108,8 +120,8 @@ export default function EditMedicationScreen() {
     <Screen>
       <Text style={styles.heading}>Edit medication</Text>
       <Text style={styles.warn}>
-        Changing the schedule does not update dose rows already created. Delete and re-add if you
-        need a fresh schedule.
+        Changing the times updates every upcoming dose. Doses already marked given or skipped stay
+        as they are, so the history is kept.
       </Text>
 
       <Field label="Name" required>

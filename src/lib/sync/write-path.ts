@@ -94,6 +94,37 @@ export async function writeRows(
   bumpDataVersion();
 }
 
+/**
+ * Batched deleteRow. One transaction for the local tombstones, one enqueue
+ * each, one nudge at the end — a schedule change can invalidate ninety
+ * upcoming doses at once, and ninety separate fsyncs is a visible stall.
+ */
+export async function deleteRows(table: SyncableTable, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const now = new Date().toISOString();
+  // Read before tombstoning: getById filters out deleted rows, and the outbound
+  // tombstone has to carry the full row or Postgres rejects it on NOT NULL
+  // before it ever notices the conflict.
+  const rows = await Promise.all(ids.map((id) => getById(table, id)));
+  const db = await getDb();
+  const demo = isDemoMode();
+  await db.withTransactionAsync(async () => {
+    for (const id of ids) await softDelete(table, id);
+    if (!demo) {
+      for (let i = 0; i < ids.length; i++) {
+        await enqueueWrite(table, 'delete', {
+          ...(rows[i] ?? {}),
+          id: ids[i],
+          deleted_at: now,
+          updated_at: now,
+        });
+      }
+    }
+  });
+  if (!demo) nudge();
+  bumpDataVersion();
+}
+
 /** Soft-delete a row (sets deleted_at locally and enqueues the tombstone). */
 export async function deleteRow(table: SyncableTable, id: string): Promise<void> {
   const now = new Date().toISOString();

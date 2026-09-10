@@ -130,5 +130,165 @@ console.log('\nparent consent — health data about someone who never signed up'
   });
 }
 
+console.log('\ndose horizon — the medication that vanished on day 91');
+{
+  const {
+    planTopUp,
+    planReschedule,
+    daysOfRunway,
+    doseId,
+    uuidv5,
+    DOSE_HORIZON_DAYS,
+  } = load('dose-plan.js');
+
+  const MED = 'med-1';
+  const now = new Date('2026-06-15T09:30:00.000Z');
+  const at = (iso) => ({ id: doseId(MED, iso), scheduled_at: iso });
+
+  // Ids are derived, not random: two phones extending the same horizon before
+  // they have seen each other's rows must land on one dose, not two.
+  check('dose ids are deterministic', () => {
+    assert.strictEqual(doseId(MED, '2026-06-16T12:00:00.000Z'), doseId(MED, '2026-06-16T12:00:00.000Z'));
+  });
+  check('a different instant is a different dose', () => {
+    assert.notStrictEqual(doseId(MED, '2026-06-16T12:00:00.000Z'), doseId(MED, '2026-06-17T12:00:00.000Z'));
+  });
+  check('a different medication is a different dose', () => {
+    assert.notStrictEqual(doseId('med-1', '2026-06-16T12:00:00.000Z'), doseId('med-2', '2026-06-16T12:00:00.000Z'));
+  });
+  // Vectors from python's uuid.uuid5 — an implementation nobody here wrote.
+  check('uuidv5 matches the reference implementation', () => {
+    assert.strictEqual(
+      uuidv5('example.com', '6ba7b810-9dad-11d1-80b4-00c04fd430c8'),
+      'cfbff0d1-9375-5685-968c-48ce8b15ae17',
+    );
+    assert.strictEqual(
+      uuidv5('med-1|2026-09-10T12:00:00.000Z', '6b2f4b2e-9a1e-5c7a-9a3e-2f1c7d4b8e10'),
+      'a1a6280d-9385-56e3-ac4f-a1e1ec939628',
+    );
+    assert.strictEqual(
+      uuidv5('메드-1|2026-09-10T12:00:00.000Z', '6b2f4b2e-9a1e-5c7a-9a3e-2f1c7d4b8e10'),
+      '96e632ce-56d2-51c0-8765-d884e47f7708',
+    );
+  });
+
+  const daily = [{ time: '08:00' }];
+
+  check('a brand-new medication gets a full horizon', () => {
+    const plan = planTopUp({ medicationId: MED, schedule: daily, existing: [], now });
+    assert.ok(plan.create.length >= DOSE_HORIZON_DAYS - 1, `only ${plan.create.length} doses`);
+    assert.strictEqual(plan.remove.length, 0);
+  });
+  check('no dose is ever created in the past', () => {
+    const plan = planTopUp({ medicationId: MED, schedule: daily, existing: [], now });
+    for (const d of plan.create) assert.ok(Date.parse(d.scheduled_at) > now.getTime(), d.scheduled_at);
+  });
+
+  // The bug itself: doses were written once, 90 days out, and never again.
+  check('the day-91 cliff is refilled', () => {
+    const existing = [];
+    for (let i = -100; i < -1; i++) {
+      const d = new Date(now);
+      d.setDate(d.getDate() + i);
+      d.setHours(8, 0, 0, 0);
+      existing.push({ ...at(d.toISOString()), given_at: d.toISOString() });
+    }
+    assert.strictEqual(daysOfRunway(existing, now), 0, 'a run-out medication should show no runway');
+    const plan = planTopUp({ medicationId: MED, schedule: daily, existing, now });
+    assert.ok(plan.create.length >= DOSE_HORIZON_DAYS - 1, `refilled only ${plan.create.length}`);
+    assert.strictEqual(plan.remove.length, 0, 'history must not be touched');
+  });
+
+  check('a topped-up medication is left alone', () => {
+    const first = planTopUp({ medicationId: MED, schedule: daily, existing: [], now });
+    const second = planTopUp({ medicationId: MED, schedule: daily, existing: first.create, now });
+    assert.strictEqual(second.create.length, 0, 'top-up is not idempotent');
+  });
+
+  check('the unattended path never removes anything', () => {
+    const stale = [at('2026-06-16T12:00:00.000Z'), at('2026-06-17T12:00:00.000Z')];
+    const plan = planTopUp({ medicationId: MED, schedule: daily, existing: stale, now });
+    assert.strictEqual(plan.remove.length, 0);
+  });
+
+  // G2-25: changing a dose time is the most common medication edit there is.
+  const before = planTopUp({ medicationId: MED, schedule: daily, existing: [], now }).create;
+  check('moving 08:00 to 09:00 rewrites the upcoming doses', () => {
+    const plan = planReschedule({
+      medicationId: MED,
+      schedule: [{ time: '09:00' }],
+      existing: before,
+      now,
+    });
+    assert.ok(plan.create.length > 80, `created ${plan.create.length}`);
+    assert.ok(plan.remove.length > 80, `removed ${plan.remove.length}`);
+    for (const d of plan.create) assert.strictEqual(new Date(d.scheduled_at).getHours(), 9);
+  });
+
+  check('a dose already given survives the edit', () => {
+    const given = { ...before[0], given_at: '2026-06-16T08:05:00.000Z' };
+    const skipped = { ...before[1], skipped: true };
+    const plan = planReschedule({
+      medicationId: MED,
+      schedule: [{ time: '09:00' }],
+      existing: [given, skipped, ...before.slice(2)],
+      now,
+    });
+    assert.ok(!plan.remove.includes(given.id), 'a given dose was deleted');
+    assert.ok(!plan.remove.includes(skipped.id), 'a skipped dose was deleted');
+  });
+
+  check('the past is never rewritten', () => {
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const old = { ...at(yesterday.toISOString()), given_at: null };
+    const plan = planReschedule({
+      medicationId: MED,
+      schedule: [{ time: '09:00' }],
+      existing: [old, ...before],
+      now,
+    });
+    assert.ok(!plan.remove.includes(old.id), 'a past dose was deleted');
+  });
+
+  check('saving without changing the times changes nothing', () => {
+    const plan = planReschedule({ medicationId: MED, schedule: daily, existing: before, now });
+    assert.strictEqual(plan.create.length, 0, `created ${plan.create.length}`);
+    assert.strictEqual(plan.remove.length, 0, `removed ${plan.remove.length}`);
+  });
+
+  check('adding a second time only adds', () => {
+    const plan = planReschedule({
+      medicationId: MED,
+      schedule: [{ time: '08:00' }, { time: '20:00' }],
+      existing: before,
+      now,
+    });
+    assert.strictEqual(plan.remove.length, 0);
+    for (const d of plan.create) assert.strictEqual(new Date(d.scheduled_at).getHours(), 20);
+  });
+
+  check('a malformed time never becomes a dose', () => {
+    const plan = planTopUp({ medicationId: MED, schedule: [{ time: '8am' }], existing: [], now });
+    assert.strictEqual(plan.create.length, 0);
+  });
+
+  // Stepping by 24 hours walks an 8am dose to 7am (or 9am) at a DST boundary
+  // and leaves it there. Building each calendar day and then applying the
+  // wall-clock time does not.
+  check('8am stays 8am across daylight saving', () => {
+    const tz = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    try {
+      const march = new Date('2026-03-01T12:00:00.000Z'); // DST starts 8 March 2026
+      const plan = planTopUp({ medicationId: MED, schedule: daily, existing: [], now: march, horizonDays: 20 });
+      const hours = new Set(plan.create.map((d) => new Date(d.scheduled_at).getHours()));
+      assert.deepStrictEqual([...hours], [8], `hours seen: ${[...hours].join(',')}`);
+    } finally {
+      process.env.TZ = tz;
+    }
+  });
+}
+
 console.log(failures === 0 ? '\nPASS: all logic checks' : `\nFAIL: ${failures} check(s)`);
 process.exit(failures === 0 ? 0 : 1);
