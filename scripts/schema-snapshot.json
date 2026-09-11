@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "tables": {
     "families": [
       "id",
@@ -39,6 +39,10 @@
       "insurance",
       "dnr_status",
       "healthcare_proxy",
+      "consent_basis",
+      "consent_attested_at",
+      "consent_attested_by",
+      "consent_notice_version",
       "created_at!",
       "updated_at!",
       "deleted_at"

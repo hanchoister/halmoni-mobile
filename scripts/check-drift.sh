@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Two drift checks. Silence means clean.
+# Three drift checks. Silence means clean.
 #
 #   1. Does production still have every column the mirror expects?
 #      (the 2026-08-31 failure: created_at missing from five tables)
 #   2. Has the local mirror's shape changed without the snapshot being refreshed?
 #      (catches a schema edit landing without anyone reviewing it, including a
 #      NOT NULL change, which check 1 physically cannot see)
+#   3. Do production's access rules match the migrations?
+#      (the 2026-09-10 finding: hand-made "<table> rw" policies that would have
+#      silently cancelled any tightening migration. Needs SUPABASE_DB_URL.)
 #
 # Run before any release, and after touching src/lib/db/schema.ts.
 set -euo pipefail
@@ -43,6 +46,12 @@ else
     echo "If it is not, revert src/lib/db/schema.ts."
     fail=1
   fi
+fi
+
+echo
+echo "── 3. production access rules match the migrations ──"
+if ! node scripts/verify-policies.mjs; then
+  fail=1
 fi
 
 echo
