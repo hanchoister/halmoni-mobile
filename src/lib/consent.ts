@@ -81,7 +81,7 @@ export const CONSENT_BASIS_COPY: Record<
   parent_agreed: {
     label: 'They know, and they agreed',
     attestation:
-      'I have shown or read them the notice below, and they agreed to Halmoni holding their health information.',
+      'I have shown or read them the notice above, and they agreed to Halmoni holding their health information.',
     sharing:
       'They also agreed that everyone invited into this care circle can see it.',
     noticeLine: 'They told us you agreed to this.',
