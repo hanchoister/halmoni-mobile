@@ -50,7 +50,7 @@ alter table parents add column if not exists consent_sharing_at     timestamptz;
 comment on column parents.consent_sharing_at is
   'When the separate answer about the rest of the care circle seeing this person''s data was given. Separate and distinct from consent_attested_at by design — see 00000000000008.';
 comment on column parents.consent_basis is
-  'Why this family may hold this person''s health data: parent_agreed | healthcare_proxy | power_of_attorney | guardianship. Mirrored in src/lib/consent.ts and checked by scripts/verify-consent.js.';
+  'Why this family may hold this person''s health data: parent_agreed | healthcare_proxy | power_of_attorney | guardianship | no_formal_authority. Mirrored in src/lib/consent.ts and checked by scripts/verify-consent.js.';
 comment on column parents.consent_notice_version is
   'Version of the wording the attesting user was shown. The text of every version is archived in src/lib/consent.ts so it can be produced later.';
 
