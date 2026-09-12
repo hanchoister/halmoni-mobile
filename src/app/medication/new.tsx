@@ -162,10 +162,27 @@ export default function AddMedicationScreen() {
           </View>
           <Button title="Add time" variant="secondary" onPress={addTime} />
         </View>
-        <View style={styles.switchRow}>
+        {/* The whole row toggles, not just the switch.
+            Reported 2026-09-11: "why can't I toggle the take with food button".
+            Reproduced on a simulator — the bare <Switch> never fired
+            onValueChange, while text inputs on the same screen worked, so the
+            touch was not reaching the native control. Rather than keep guessing
+            at UIKit hit-testing, the row is now the button: a ~44pt target that
+            includes the label, which is the better control anyway. The Switch
+            still renders the state and still works when hit directly. */}
+        <Pressable
+          onPress={() => setWithFood((v) => !v)}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: withFood }}
+          accessibilityLabel="Take with food"
+          style={styles.switchRow}>
           <Text style={styles.switchLabel}>Take with food</Text>
-          <Switch value={withFood} onValueChange={setWithFood} />
-        </View>
+          <Switch
+            value={withFood}
+            onValueChange={setWithFood}
+            pointerEvents="none"
+          />
+        </Pressable>
       </Field>
 
       <View style={styles.row}>
@@ -230,6 +247,12 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   chipText: { fontSize: 12, color: palette.ink900 },
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 8 },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: 8,
+    minHeight: 44,
+  },
   switchLabel: { fontSize: 13, color: palette.ink700 },
 });
