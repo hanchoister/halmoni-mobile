@@ -19,7 +19,7 @@ import { HeaderBackButton } from '@/components/ui/header-back';
 import { WelcomeScreen } from '@/components/welcome-screen';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { enableDemoMode, isDemoMode, useDemoMode } from '@/lib/demo-mode';
-import { seedDemoDataIntoDb } from '@/lib/demo-seed';
+import { purgeDemoResidue, seedDemoDataIntoDb } from '@/lib/demo-seed';
 import { FamilyProvider, useFamily } from '@/lib/family';
 import { MeProvider, useMe } from '@/lib/me';
 import { ParentProvider } from '@/lib/parent';
@@ -161,6 +161,14 @@ function RootNavigator() {
   useEffect(() => {
     if (demoMode) void seedDemoDataIntoDb();
   }, [demoMode]);
+  // A real session must never start on top of demo fixtures. demoActive is a
+  // module flag and the fixtures are on disk, so a relaunch leaves the rows
+  // looking like real data — which is how 430 demo dose updates ended up
+  // queued against production on 2026-09-11. Runs before the sync engine
+  // mounts, because MaybeSyncProvider is below this in the tree.
+  useEffect(() => {
+    if (session && !demoMode) void purgeDemoResidue();
+  }, [session, demoMode]);
   if (loading) return <Spinner />;
   if (session || demoMode) {
     return (

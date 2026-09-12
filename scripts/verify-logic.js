@@ -317,6 +317,38 @@ console.log('\ndose horizon — the medication that vanished on day 91');
   });
 }
 
+console.log('\nsync ids — the demo fixtures that got queued at production');
+{
+  const { isSyncableId, firstUnsyncableId } = load('ids.js');
+  const real = '84a7fc91-3eee-4220-8999-811336e51648';
+
+  check('a uuid is syncable', () => assert.strictEqual(isSyncableId(real), true));
+  // The exact value production rejected 430 times.
+  check('a demo fixture id is not', () => assert.strictEqual(isSyncableId('demo-fam-1'), false));
+  for (const bad of ['', 'demo-parent-1', '84a7fc91', 12345, null, undefined, {}]) {
+    check(`${JSON.stringify(bad)} is not a syncable id`, () =>
+      assert.strictEqual(isSyncableId(bad), false));
+  }
+  check('a clean row passes', () =>
+    assert.strictEqual(firstUnsyncableId({ id: real, family_id: real, name: 'x' }), null));
+  check('the demo row that broke sync is caught', () => {
+    const bad = firstUnsyncableId({ id: real, family_id: 'demo-fam-1', parent_id: 'demo-parent-1' });
+    assert.deepStrictEqual(bad, { column: 'family_id', value: 'demo-fam-1' });
+  });
+  // Nullable id columns are normal; absent is not malformed.
+  check('a null id column is allowed', () =>
+    assert.strictEqual(firstUnsyncableId({ id: real, from_member_id: null }), null));
+  // Found by shape, not by a hand-written column list — the thing this repo
+  // keeps getting wrong.
+  check('an id column nobody listed is still checked', () =>
+    assert.deepStrictEqual(firstUnsyncableId({ id: real, some_future_id: 'demo-x' }), {
+      column: 'some_future_id',
+      value: 'demo-x',
+    }));
+  check('a non-id column is left alone', () =>
+    assert.strictEqual(firstUnsyncableId({ id: real, nickname: 'demo-fam-1' }), null));
+}
+
 console.log('\nterms — what the USER agrees to, for themselves (G1-33)');
 {
   const {

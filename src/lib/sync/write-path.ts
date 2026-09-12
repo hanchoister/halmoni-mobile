@@ -5,6 +5,7 @@
 // supabase.from() directly continue to work, they just skip the offline layer.
 
 import { validateConsent } from '@/lib/consent';
+import { firstUnsyncableId } from '@/lib/sync/ids';
 import { getDb } from '@/lib/db/client';
 import { enqueueWrite, getById, softDelete, upsertRow } from '@/lib/db/repository';
 import type { SyncableTable } from '@/lib/db/schema';
@@ -53,6 +54,24 @@ function guardParentConsent(table: SyncableTable, row: Record<string, any>) {
   if (problem) throw new Error(problem);
 }
 
+/**
+ * The backstop for demo residue (see sync/ids.ts). Runs only on the way OUT to
+ * the server: demo rows are perfectly valid in the local mirror, and blocking
+ * them there would break demo mode itself.
+ *
+ * Throws rather than skipping quietly. A write that is accepted locally and
+ * silently never sent is the exact failure this app has shipped twice already.
+ */
+function guardOutboundIds(table: SyncableTable, row: Record<string, any>) {
+  const bad = firstUnsyncableId(row);
+  if (bad) {
+    throw new Error(
+      `Refusing to sync ${table}.${bad.column} = ${JSON.stringify(bad.value)}: not a uuid. ` +
+        'This row looks like demo data left in the local mirror; sign out and back in to clear it.',
+    );
+  }
+}
+
 /** Create or update a row. Row MUST include id. */
 export async function writeRow(
   table: SyncableTable,
@@ -64,6 +83,7 @@ export async function writeRow(
   // Demo mode never talks to Supabase — skip the outbound queue so demo
   // writes stay self-contained and don't leak into a real account later.
   if (!isDemoMode()) {
+    guardOutboundIds(table, stamped);
     await enqueueWrite(table, 'update', stamped);
     nudge();
   }
@@ -87,7 +107,10 @@ export async function writeRows(
   await db.withTransactionAsync(async () => {
     for (const r of stamped) await upsertRow(table, r);
     if (!demo) {
-      for (const r of stamped) await enqueueWrite(table, 'update', r);
+      for (const r of stamped) {
+        guardOutboundIds(table, r);
+        await enqueueWrite(table, 'update', r);
+      }
     }
   });
   if (!demo) nudge();
@@ -112,12 +135,14 @@ export async function deleteRows(table: SyncableTable, ids: string[]): Promise<v
     for (const id of ids) await softDelete(table, id);
     if (!demo) {
       for (let i = 0; i < ids.length; i++) {
-        await enqueueWrite(table, 'delete', {
+        const tombstone = {
           ...(rows[i] ?? {}),
           id: ids[i],
           deleted_at: now,
           updated_at: now,
-        });
+        };
+        guardOutboundIds(table, tombstone);
+        await enqueueWrite(table, 'delete', tombstone);
       }
     }
   });
@@ -141,12 +166,14 @@ export async function deleteRow(table: SyncableTable, id: string): Promise<void>
     // NULL against the proposed INSERT row before it ever detects the conflict,
     // so a payload missing family_id was rejected with 23502 every time — which
     // is why deletes never reached other devices.
-    await enqueueWrite(table, 'delete', {
+    const tombstone = {
       ...(existing ?? {}),
       id,
       deleted_at: now,
       updated_at: now,
-    });
+    };
+    guardOutboundIds(table, tombstone);
+    await enqueueWrite(table, 'delete', tombstone);
     nudge();
   }
   bumpDataVersion();

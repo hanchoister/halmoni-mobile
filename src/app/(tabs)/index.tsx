@@ -276,10 +276,24 @@ export default function TodayScreen() {
               {greeting()}
               {me?.name ? `, ${me.name.split(' ')[0]}` : ''}
             </Text>
-            <Pressable onPress={() => router.push('/profile')}>
-              <Text style={styles.heroDisplay}>
-                How&rsquo;s <Text style={styles.heroDisplayAccent}>{parentName}</Text> today?
-              </Text>
+            {/* Opening the parent's profile was a tap on this headline with
+                nothing to say so — no chevron, no role, and the stats below it
+                were not tappable at all. Reported 2026-09-11 as "it's not clear
+                you can click the green part". Now one labelled button covering
+                the name AND the stats, with a chevron and a hint line. */}
+            <Pressable
+              onPress={() => router.push('/profile')}
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${parentName}'s profile`}
+              accessibilityHint="Medications, conditions, allergies and emergency details"
+              style={({ pressed }) => [pressed && styles.heroPressed]}>
+              <View style={styles.heroTitleRow}>
+                <Text style={styles.heroDisplay}>
+                  How&rsquo;s <Text style={styles.heroDisplayAccent}>{parentName}</Text> today?
+                </Text>
+                <Icon name="chevronRight" size={20} color={color.onHeroDim} />
+              </View>
+              <Text style={styles.heroHint}>Tap for their profile</Text>
             </Pressable>
           </View>
           <Pressable
@@ -292,7 +306,11 @@ export default function TodayScreen() {
           </Pressable>
         </View>
 
-        <View style={styles.statRow}>
+        <Pressable
+          onPress={() => router.push('/profile')}
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${parentName}'s profile`}
+          style={({ pressed }) => [styles.statRow, pressed && styles.heroPressed]}>
           <View>
             <Text style={styles.statValue}>
               {dosesGiven}
@@ -316,7 +334,7 @@ export default function TodayScreen() {
               </View>
             </>
           )}
-        </View>
+        </Pressable>
 
         <View style={styles.dutyWell}>
           {dutyMember ? (
@@ -469,6 +487,9 @@ const styles = StyleSheet.create({
   heroDisplayAccent: { color: color.onHeroAccent },
 
   statRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.lg, marginTop: spacing.xl },
+  heroTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  heroHint: { ...typography.meta, color: color.onHeroFaint, marginTop: 2 },
+  heroPressed: { opacity: 0.6 },
   statValue: { ...typography.display, fontSize: 24, lineHeight: 26, color: color.onHero },
   statOf: { fontFamily: fontFamily.sans, fontSize: 15, color: color.onHeroFaint },
   statLabel: { ...typography.label, fontSize: 9.5, color: color.onHeroFaint, marginTop: 5 },
