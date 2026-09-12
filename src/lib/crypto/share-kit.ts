@@ -5,12 +5,28 @@
 // to the public share-kits Storage bucket, insert a share_kits row holding
 // only salt/iv/iteration count, and return a short URL.
 //
+// The passphrase is the ONLY thing protecting the payload once the link is out,
+// so it has a 12-character floor and a strong suggested default.
 // The passphrase never leaves the device. Server + Storage see only opaque
 // bytes. Recipient opens the URL in the halmoni-landing /view page and enters
 // the passphrase to decrypt in-browser via WebCrypto.
 
 import { encryptWithPassphrase } from '@/lib/crypto/encrypt';
 import { shortSlug } from '@/lib/crypto/slug';
+
+/* The ciphertext sits in a public bucket, so whoever has the link can keep a
+   copy and attack it offline for as long as they like. PBKDF2 at 210k
+   iterations slows each guess, but it cannot save a short or dictionary
+   passphrase: six lowercase characters fall on a single GPU in hours, and a
+   real word falls in seconds. Twelve is the floor; suggestSharePassphrase()
+   gives the caller something far stronger to offer by default. */
+export const MIN_PASSPHRASE_LENGTH = 12;
+
+/** A strong, speakable default: 3 groups of 5 Crockford base32 chars (~74 bits). */
+export async function suggestSharePassphrase(): Promise<string> {
+  const groups = await Promise.all([shortSlug(5), shortSlug(5), shortSlug(5)]);
+  return groups.join('-');
+}
 import { logAudit } from '@/lib/audit';
 import type { ParentRow } from '@/lib/parent';
 import { supabase } from '@/lib/supabase';
@@ -99,8 +115,8 @@ export async function createEncryptedCareKitShare(
   opts: CreateShareOpts,
 ): Promise<ShareKitResult> {
   const { passphrase, familyId } = opts;
-  if (!passphrase || passphrase.length < 6) {
-    throw new Error('Passphrase must be at least 6 characters.');
+  if (!passphrase || passphrase.length < MIN_PASSPHRASE_LENGTH) {
+    throw new Error(`Passphrase must be at least ${MIN_PASSPHRASE_LENGTH} characters.`);
   }
 
   const payload = await buildPayload(parent, opts.createdByName);
