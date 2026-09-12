@@ -71,20 +71,34 @@ insert into storage.buckets (id, name, public)
 values ('share-kits', 'share-kits', true)
 on conflict (id) do nothing;
 
+-- No SELECT policy, deliberately. The bucket is public, so object URLs are
+-- fetchable without one; a broad SELECT policy adds only the ability to LIST
+-- the bucket, which hands out the 8-character share slugs the whole design
+-- treats as the secret (Supabase lint 0025_public_bucket_allows_listing).
+-- share_kits_storage_read was dropped from production on 2026-09-10 for that
+-- reason (G2-30), and recreating it here would put it back on the next push.
+--
+-- Writes are family-scoped rather than merely signed-in. The first version of
+-- these two checked only `auth.uid() is not null`, which let ANY account with
+-- an email address upload into — or delete from — any family's folder: free
+-- file hosting on a public bucket, and a delete button on every other
+-- family's kits. Permissive policies OR, so sitting beside the correct
+-- family-scoped pair changed nothing about how bad they were. Dropped from
+-- production 2026-09-11 (G2-35).
 drop policy if exists share_kits_storage_read on storage.objects;
-create policy share_kits_storage_read on storage.objects
-  for select using (bucket_id = 'share-kits');
-
 drop policy if exists share_kits_storage_write on storage.objects;
-create policy share_kits_storage_write on storage.objects
-  for insert with check (
+drop policy if exists share_kits_storage_delete on storage.objects;
+
+drop policy if exists "share-kits storage insert" on storage.objects;
+create policy "share-kits storage insert" on storage.objects
+  for insert to authenticated with check (
     bucket_id = 'share-kits'
-    and auth.uid() is not null
+    and is_family_member(((storage.foldername(name))[1])::uuid)
   );
 
-drop policy if exists share_kits_storage_delete on storage.objects;
-create policy share_kits_storage_delete on storage.objects
-  for delete using (
+drop policy if exists "share-kits storage delete" on storage.objects;
+create policy "share-kits storage delete" on storage.objects
+  for delete to authenticated using (
     bucket_id = 'share-kits'
-    and auth.uid() is not null
+    and is_family_member(((storage.foldername(name))[1])::uuid)
   );
