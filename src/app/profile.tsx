@@ -14,6 +14,7 @@ import { describeConsent, isConsentBasis } from '@/lib/consent';
 import { calcAge } from '@/lib/format';
 import { useParents } from '@/lib/parent';
 import { shareParentNotice } from '@/lib/parent-notice';
+import { describeRemoval, previewRemoval, removeParent } from '@/lib/parent-remove';
 import { useMe } from '@/lib/me';
 import { color, palette, radius, spacing } from '@/lib/theme';
 
@@ -31,6 +32,46 @@ export default function ProfileScreen() {
   const { me } = useMe();
   const [exporting, setExporting] = useState(false);
   const [printingNotice, setPrintingNotice] = useState(false);
+  const [removing, setRemoving] = useState(false);
+
+  // Withdrawing permission (G1-32). The notice promises this in the largest
+  // words on the page — "tell any family member to delete your record" — and
+  // until 2026-09-11 no screen could do it. Apple 5.1.1(ii) wants it too:
+  // consent with no way out is not consent.
+  async function onWithdraw() {
+    if (!currentParent) return;
+    const who = currentParent.nickname || currentParent.name;
+    let counts: Record<string, number> = {};
+    try {
+      counts = await previewRemoval(currentParent.id);
+    } catch {
+      // Counting is a courtesy; not being able to count is no reason to trap
+      // someone's data in the app.
+    }
+    Alert.alert(
+      `Remove ${who}?`,
+      `This deletes ${describeRemoval(counts)}, and ${who}'s own record, from this app and from every phone in the care circle. This is what withdrawing their permission means.`,
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setRemoving(true);
+            try {
+              await removeParent(currentParent.id);
+              const other = parents.find((p) => p.id !== currentParent.id);
+              if (other) setCurrentParentId(other.id);
+            } catch (e) {
+              Alert.alert('Could not remove', e instanceof Error ? e.message : String(e));
+            } finally {
+              setRemoving(false);
+            }
+          },
+        },
+      ],
+    );
+  }
 
   // Reprinting the notice is the answer to "she asked what this app is" — the
   // parent gets the same sheet they were meant to get on day one, without
@@ -238,6 +279,13 @@ export default function ProfileScreen() {
               {printingNotice ? 'Preparing…' : 'Print their notice again'}
             </Text>
           </Pressable>
+          <Pressable onPress={onWithdraw} disabled={removing}>
+            <Text style={styles.consentWithdraw}>
+              {removing
+                ? 'Removing…'
+                : `They changed their mind — remove ${currentParent.nickname || currentParent.name}`}
+            </Text>
+          </Pressable>
         </Card>
       )}
 
@@ -290,6 +338,11 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
   name: { fontSize: 24, fontWeight: '800', color: palette.ink900 },
   sub: { fontSize: 13, color: palette.ink500, marginTop: 4 },
+  consentWithdraw: {
+    fontSize: 13,
+    color: color.accent,
+    marginTop: spacing.sm,
+  },
   consentAction: {
     fontSize: 13,
     color: color.confirm,

@@ -19,8 +19,16 @@ import { ChipInput } from '@/components/ui/chip-input';
 import { Field, Input } from '@/components/ui/field';
 import { Screen } from '@/components/ui/screen';
 import { useAuth } from '@/lib/auth';
+import { Checkbox } from '@/components/ui/checkbox';
 import type { ConsentBasis } from '@/lib/consent';
-import { buildConsent, CONSENT_BASES, CONSENT_BASIS_COPY } from '@/lib/consent';
+import {
+  buildConsent,
+  CONSENT_BASES,
+  CONSENT_BASIS_COPY,
+  CONSENT_NOTICE_VERSION,
+  NO_AUTHORITY_ACKNOWLEDGEMENT,
+  NOTICE_ARCHIVE,
+} from '@/lib/consent';
 import { useFamily } from '@/lib/family';
 import { useMe } from '@/lib/me';
 import { newId } from '@/lib/newid';
@@ -39,7 +47,24 @@ export default function AddParentScreen() {
   const [step, setStep] = useState<Step>('permission');
   const [name, setName] = useState('');
   const [basis, setBasis] = useState<ConsentBasis | null>(null);
+  const [sharingAgreed, setSharingAgreed] = useState(false);
+  const [noAuthorityAck, setNoAuthorityAck] = useState(false);
   const [printing, setPrinting] = useState(false);
+
+  // Changing the basis changes the words of both statements below it, so the
+  // ticks that belonged to the old wording are cleared rather than carried
+  // over to something the user never read.
+  function chooseBasis(next: ConsentBasis) {
+    setBasis(next);
+    setSharingAgreed(false);
+    setNoAuthorityAck(false);
+  }
+
+  const ready =
+    !!name.trim() &&
+    !!basis &&
+    sharingAgreed &&
+    (basis !== 'no_formal_authority' || noAuthorityAck);
 
   const [nickname, setNickname] = useState('');
   const [dob, setDob] = useState('');
@@ -66,7 +91,7 @@ export default function AddParentScreen() {
   }
 
   async function save() {
-    if (!familyId || !name.trim() || !basis) return;
+    if (!familyId || !name.trim() || !basis || !ready) return;
     const userId = session?.user?.id;
     if (!userId) {
       Alert.alert(
@@ -93,7 +118,7 @@ export default function AddParentScreen() {
         allergies,
         preferences: preferences.trim() || null,
         ice_contacts: [],
-        ...buildConsent(basis, userId),
+        ...buildConsent(basis, sharingAgreed, userId),
         created_at: new Date().toISOString(),
       });
       router.back();
@@ -114,6 +139,23 @@ export default function AddParentScreen() {
           that you are the person entitled to decide for them.
         </Text>
 
+        {/* The notice comes BEFORE the question, not after it. Until 09-11 this
+            screen asked whether the parent had agreed, and only then offered to
+            print the page describing what they would be agreeing to — which
+            asks someone to attest to informed consent before the information
+            exists. Same words as the printed sheet, from the same archive. */}
+        <View style={styles.noticeBox}>
+          <Text style={styles.noticeLabel}>WHAT THEY ARE BEING TOLD</Text>
+          <Text style={styles.noticeHeading}>
+            {NOTICE_ARCHIVE[CONSENT_NOTICE_VERSION].heading}
+          </Text>
+          {NOTICE_ARCHIVE[CONSENT_NOTICE_VERSION].paragraphs.map((p) => (
+            <Text key={p.slice(0, 24)} style={styles.noticeBody}>
+              {p}
+            </Text>
+          ))}
+        </View>
+
         <Field label="Their full name" required>
           <Input value={name} onChangeText={setName} placeholder="Eleanor Park" autoFocus />
         </Field>
@@ -125,7 +167,7 @@ export default function AddParentScreen() {
             return (
               <Pressable
                 key={b}
-                onPress={() => setBasis(b)}
+                onPress={() => chooseBasis(b)}
                 accessibilityRole="radio"
                 accessibilityState={{ selected }}
                 accessibilityLabel={CONSENT_BASIS_COPY[b].label}
@@ -140,6 +182,29 @@ export default function AddParentScreen() {
             );
           })}
         </View>
+
+        {/* Holding it and showing it to everyone else are two questions, and
+            Washington wants the second answer separate from the first
+            (RCW 19.373.030). It is also the one people are surprised by: the
+            sibling who joins next month can read all of it. G1-32. */}
+        {basis && (
+          <View style={styles.second}>
+            <Checkbox
+              checked={sharingAgreed}
+              onChange={setSharingAgreed}
+              label="Everyone in the care circle will see it"
+              description={CONSENT_BASIS_COPY[basis].sharing}
+            />
+            {basis === 'no_formal_authority' && (
+              <Checkbox
+                checked={noAuthorityAck}
+                onChange={setNoAuthorityAck}
+                label="I understand what this one means"
+                description={NO_AUTHORITY_ACKNOWLEDGEMENT}
+              />
+            )}
+          </View>
+        )}
 
         <Text style={styles.fine}>
           We record which of these you chose and when, so that if anyone ever asks — them, an
@@ -159,11 +224,7 @@ export default function AddParentScreen() {
           Give it to them or read it aloud.
         </Text>
 
-        <Button
-          title="Continue"
-          onPress={() => setStep('details')}
-          disabled={!basis || !name.trim()}
-        />
+        <Button title="Continue" onPress={() => setStep('details')} disabled={!ready} />
         <Button title="Cancel" onPress={() => router.back()} variant="ghost" />
       </Screen>
     );
@@ -249,4 +310,16 @@ const styles = StyleSheet.create({
   optionLabel: { ...typography.bodyStrong, color: color.text },
   optionBody: { ...typography.meta, color: color.textMuted, marginTop: 2 },
   fine: { ...typography.meta, color: color.textMuted },
+  noticeBox: {
+    backgroundColor: color.surface,
+    borderWidth: 1,
+    borderColor: palette.cream200,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  noticeLabel: { ...typography.label, color: color.textMuted, textTransform: 'uppercase' },
+  noticeHeading: { ...typography.bodyStrong, color: color.text },
+  noticeBody: { ...typography.meta, color: color.textMuted },
+  second: { gap: spacing.xs },
 });

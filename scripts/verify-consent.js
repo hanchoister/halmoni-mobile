@@ -50,6 +50,7 @@ for (const col of [
   'consent_attested_at',
   'consent_attested_by',
   'consent_notice_version',
+  'consent_sharing_at',
 ]) {
   if (!sqlFlat.includes(`add column if not exists ${col}`)) {
     fail(`the migration no longer adds parents.${col}`);
@@ -61,8 +62,8 @@ for (const col of [
 if (!sqlFlat.includes('constraint parents_consent_required')) {
   fail('the parents_consent_required constraint is missing — nothing stops an unattested parent row');
 }
-if (!sqlFlat.includes('deleted_at is not null or consent_basis is not null')) {
-  fail('parents_consent_required no longer requires a basis on live rows');
+if (!sqlFlat.includes('deleted_at is not null or (consent_basis is not null and consent_sharing_at is not null)')) {
+  fail('parents_consent_required no longer requires BOTH a basis and the separate sharing answer on live rows');
 }
 if (!sqlFlat.includes('constraint parents_consent_shape')) {
   fail('the parents_consent_shape constraint is missing — a half-filled attestation could be stored');
@@ -130,8 +131,18 @@ if (tsBases.join(',') !== sqlBases.join(',')) {
 // Every basis the app offers needs the wording that goes with it, or the screen
 // renders an empty option and the printed notice says nothing.
 for (const b of tsBases) {
-  if (!new RegExp(`\\b${b}:\\s*\\{`).test(ts)) {
+  const entry = new RegExp(`\\b${b}:\\s*\\{([\\s\\S]*?)\\n  \\},`).exec(ts);
+  if (!entry) {
     fail(`consent basis '${b}' has no entry in CONSENT_BASIS_COPY`);
+    continue;
+  }
+  // Every basis needs its own sharing sentence. A basis that falls back to
+  // another one's wording is a basis whose second answer was never really
+  // asked, which is the gap G1-32 exists to close.
+  for (const key of ['label', 'attestation', 'sharing', 'noticeLine']) {
+    if (!new RegExp(`${key}:`).test(entry[1])) {
+      fail(`consent basis '${b}' has no ${key} in CONSENT_BASIS_COPY`);
+    }
   }
 }
 
@@ -178,8 +189,109 @@ for (const f of files) {
   }
 }
 
+// --- layer 5: holding and sharing are two answers (G1-32) -------------------
+// Washington wants consent to share "separate and distinct" from consent to
+// collect. One timestamp doing both jobs would satisfy every check above and
+// none of the statute.
+if (!/consent_sharing_at is null/i.test(sql) || !/consent_sharing_at is not null/i.test(sql)) {
+  fail('the migration no longer enforces consent_sharing_at in its shape constraint');
+}
+if (!/consent_sharing_at/.test(sql.split('enforce_parent_consent')[1] || '')) {
+  fail('the enforce_parent_consent trigger no longer mentions consent_sharing_at');
+}
+for (const policy of ['parents_insert', 'parents_update']) {
+  const m = new RegExp(`create policy ${policy} on parents[\\s\\S]*?;`, 'i').exec(sql);
+  if (!m || !/consent_sharing_at is not null/i.test(m[0])) {
+    fail(`the ${policy} RLS policy no longer requires the separate sharing answer`);
+  }
+}
+if (!/sharingAgreed/.test(ts) || !/buildConsent\(\s*basis: ConsentBasis,\s*sharingAgreed: boolean/.test(ts)) {
+  fail('buildConsent() no longer takes the sharing answer as a required argument');
+}
+
+const NEW_PARENT = path.join(SRC, 'app', 'parent', 'new.tsx');
+const newParent = fs.existsSync(NEW_PARENT) ? read(NEW_PARENT) : '';
+// The notice has to be on screen BEFORE the question. Attesting that someone
+// agreed, and only then offering to show them what they agreed to, is consent
+// in the wrong order.
+if (!/NOTICE_ARCHIVE\[CONSENT_NOTICE_VERSION\]/.test(newParent)) {
+  fail('the add-parent screen no longer shows the notice text before asking for the attestation');
+}
+if (!/CONSENT_BASIS_COPY\[basis\]\.sharing/.test(newParent)) {
+  fail('the add-parent screen no longer asks the separate sharing question');
+}
+if (!/NO_AUTHORITY_ACKNOWLEDGEMENT/.test(newParent)) {
+  fail('the add-parent screen no longer shows the extra acknowledgement for no_formal_authority');
+}
+
+// Withdrawal. The printed notice promises it and Apple 5.1.1(ii) requires it.
+const REMOVE = path.join(SRC, 'lib', 'parent-remove.ts');
+const remove = fs.existsSync(REMOVE) ? read(REMOVE) : '';
+if (!remove) fail('src/lib/parent-remove.ts is gone — the notice promises deletion that nothing implements');
+const PROFILE = path.join(SRC, 'app', 'profile.tsx');
+if (!/removeParent/.test(fs.existsSync(PROFILE) ? read(PROFILE) : '')) {
+  fail('no screen calls removeParent() — there is no way to withdraw permission');
+}
+// Anything hanging off a parent must be swept with them, or "deleted" leaves
+// their medications and appointments on every phone.
+const schema = read(path.join(SRC, 'lib', 'db', 'schema.ts'));
+const parentScoped = [...schema.matchAll(/CREATE TABLE IF NOT EXISTS (\w+) \(([\s\S]*?)\n  \)`/g)]
+  .filter(([, , body]) => /\bparent_id\b/.test(body))
+  .map(([, table]) => table)
+  .filter((t) => t !== 'parents');
+// Read the list itself, not the whole file: describeRemoval() also mentions
+// every table by name, so a plain grep would find 'symptoms' in the label map
+// and report all clear after the real entry was deleted. Caught by negative
+// test, which is the only reason to write them.
+const sweptMatch = /export const PARENT_SCOPED_TABLES: SyncableTable\[\] = \[([\s\S]*?)\];/.exec(remove);
+const swept = sweptMatch ? [...sweptMatch[1].matchAll(/'(\w+)'/g)].map((m) => m[1]) : [];
+if (!sweptMatch) fail('PARENT_SCOPED_TABLES could not be read out of src/lib/parent-remove.ts');
+for (const t of parentScoped) {
+  if (!swept.includes(t)) {
+    fail(`${t} has a parent_id but is not in PARENT_SCOPED_TABLES — removing a parent would orphan it`);
+  }
+}
+
+// --- layer 6: the terms the USER agrees to, for themselves (G1-33) ----------
+const TERMS_TS = path.join(SRC, 'lib', 'terms.ts');
+const terms = fs.existsSync(TERMS_TS) ? read(TERMS_TS) : '';
+if (!terms) fail('src/lib/terms.ts is gone');
+for (const v of ['TERMS_VERSION', 'PRIVACY_VERSION']) {
+  if (!new RegExp(`export const ${v} = '[^']+'`).test(terms)) fail(`${v} is missing from src/lib/terms.ts`);
+}
+// "Agree to the Terms, read the Privacy Policy." Agreeing to a privacy policy
+// turns it into a contract term, so every later deviation is a breach of
+// contract on top of whatever the regulator thinks. Policies describe;
+// contracts bind.
+const labelMatch = /export const ACCEPTANCE_LABEL =\s*'([^']+)'/.exec(terms);
+if (!labelMatch) {
+  fail('ACCEPTANCE_LABEL is missing from src/lib/terms.ts');
+} else {
+  const label = labelMatch[1];
+  if (/agree[^,;.]*privacy policy/i.test(label)) {
+    fail(`the acceptance label asks users to AGREE to the privacy policy: "${label}"`);
+  }
+  if (!/read[^,;.]*privacy policy/i.test(label)) {
+    fail(`the acceptance label does not say the privacy policy has been read: "${label}"`);
+  }
+  if (!/terms/i.test(label)) fail(`the acceptance label does not mention the Terms: "${label}"`);
+}
+const TERMS_MIGRATION = path.join(ROOT, 'supabase', 'migrations', '00000000000010_terms_acceptances.sql');
+const termsSql = fs.existsSync(TERMS_MIGRATION) ? read(TERMS_MIGRATION) : '';
+if (!termsSql) fail('the terms_acceptances migration is gone');
+if (/create policy terms_acceptances_(update|delete)/i.test(termsSql)) {
+  fail('terms_acceptances has an update or delete policy — the record of an agreement must not be editable by a party to it');
+}
+const LOGIN = path.join(SRC, 'components', 'login-screen.tsx');
+const login = fs.existsSync(LOGIN) ? read(LOGIN) : '';
+if (!/useState\(false\)/.test(login.split('accepted')[1] || '')) {
+  fail('the terms checkbox is not guaranteed to start unticked — a pre-ticked box is not a clear affirmative act');
+}
+if (!/if \(!accepted\)/.test(login)) fail('the sign-in screen no longer requires the terms box before sending a code');
+if (!/recordTermsAcceptance/.test(login)) fail('the sign-in screen no longer records the acceptance');
+
 console.log(
-  `checked 4 enforcement layers, ${tsBases.length} consent bases and ${files.length} source files`,
+  `checked 6 enforcement layers, ${tsBases.length} consent bases, ${parentScoped.length} parent-scoped tables and ${files.length} source files`,
 );
 if (failures.length) {
   console.log('\nFAIL');

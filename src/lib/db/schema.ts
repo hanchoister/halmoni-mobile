@@ -6,7 +6,7 @@
 // JSON-shaped columns (arrays, objects) are stored as TEXT and parsed via the
 // repository. This keeps SQLite ↔ Postgres alignment simple.
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 // Ordered so foreign-key-referenced tables come first.
 export const CREATE_TABLE_SQL: string[] = [
@@ -61,6 +61,8 @@ export const CREATE_TABLE_SQL: string[] = [
     -- again on the server, which is the only copy that matters legally.
     consent_basis          TEXT,
     consent_attested_at    TEXT,
+    -- The separate answer about the rest of the circle seeing it (G1-32).
+    consent_sharing_at     TEXT,
     consent_attested_by    TEXT,
     consent_notice_version TEXT,
     created_at     TEXT NOT NULL,

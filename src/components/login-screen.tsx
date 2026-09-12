@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -13,6 +14,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { supabase } from '@/lib/supabase';
 import { HalmoniMark } from '@/components/halmoni-mark';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ACCEPTANCE_LABEL, PRIVACY_URL, TERMS_URL } from '@/lib/terms';
+import { recordTermsAcceptance } from '@/lib/terms-record';
 
 export function LoginScreen() {
   const [stage, setStage] = useState<'email' | 'code'>('email');
@@ -21,12 +25,22 @@ export function LoginScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Never starts ticked. A pre-ticked box is not an unambiguous act, which is
+  // what both the clickwrap cases and Washington's consent definition want,
+  // and ticking it for someone is the deceptive design the statute names.
+  // Sign-in and sign-up are the same screen here, so a returning user sees it
+  // too; the row it writes is per version, so re-accepting is not noise.
+  const [accepted, setAccepted] = useState(false);
   const codeInputRef = useRef<TextInput | null>(null);
 
   async function sendCode() {
     const cleaned = email.trim();
     if (!cleaned) {
       setError('Enter your email to get a sign-in code.');
+      return;
+    }
+    if (!accepted) {
+      setError('Please agree to the Terms before continuing.');
       return;
     }
     setBusy(true);
@@ -55,13 +69,19 @@ export function LoginScreen() {
     setBusy(true);
     setError(null);
     setNotice(null);
-    const { error } = await supabase.auth.verifyOtp({
+    const { data, error } = await supabase.auth.verifyOtp({
       email: email.trim(),
       token,
       type: 'email',
     });
     if (error) {
       setError(error.message);
+    } else if (data.user) {
+      // Recorded after the code is verified, because that is the first moment
+      // there is a user id to attach it to. Deliberately not awaited and never
+      // fatal: a failure here must not stand between someone and their
+      // mother's medication list, and the box is shown again next time.
+      void recordTermsAcceptance(data.user.id);
     }
     setBusy(false);
   }
@@ -100,6 +120,21 @@ export function LoginScreen() {
               onSubmitEditing={sendCode}
               returnKeyType="send"
             />
+          )}
+
+          {stage === 'email' && (
+            <View style={styles.terms}>
+              <Checkbox checked={accepted} onChange={setAccepted} label={ACCEPTANCE_LABEL} />
+              <View style={styles.termsLinks}>
+                <Text style={styles.termsLink} onPress={() => Linking.openURL(TERMS_URL)}>
+                  Terms
+                </Text>
+                <Text style={styles.termsDot}>·</Text>
+                <Text style={styles.termsLink} onPress={() => Linking.openURL(PRIVACY_URL)}>
+                  Privacy Policy
+                </Text>
+              </View>
+            </View>
           )}
 
           {stage === 'code' && (
@@ -179,6 +214,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   emailHint: { color: '#6B7280', fontSize: 13, textAlign: 'center' },
+  terms: { gap: 2 },
+  termsLinks: { flexDirection: 'row', gap: 8, paddingLeft: 40 },
+  termsLink: { color: '#208AEF', fontSize: 13, fontWeight: '600' },
+  termsDot: { color: '#9AA5B1', fontSize: 13 },
   button: {
     backgroundColor: '#208AEF',
     borderRadius: 12,

@@ -38,7 +38,17 @@ alter table parents add column if not exists consent_basis          text;
 alter table parents add column if not exists consent_attested_at    timestamptz;
 alter table parents add column if not exists consent_attested_by    uuid;
 alter table parents add column if not exists consent_notice_version text;
+-- Holding their information and showing it to the rest of the circle are two
+-- questions, and Washington requires the second answer to be "separate and
+-- distinct" from the first (RCW 19.373.030). Sharing a parent's medications
+-- with their other children is sharing: the Act's exclusion for a recipient
+-- the consumer already deals with runs to a service *the consumer* requested,
+-- and the consumer here is the parent, who requested nothing. One more column
+-- is a cheap way to be able to show the two answers separately.
+alter table parents add column if not exists consent_sharing_at     timestamptz;
 
+comment on column parents.consent_sharing_at is
+  'When the separate answer about the rest of the care circle seeing this person''s data was given. Separate and distinct from consent_attested_at by design — see 00000000000008.';
 comment on column parents.consent_basis is
   'Why this family may hold this person''s health data: parent_agreed | healthcare_proxy | power_of_attorney | guardianship. Mirrored in src/lib/consent.ts and checked by scripts/verify-consent.js.';
 comment on column parents.consent_notice_version is
@@ -58,17 +68,26 @@ begin
         and consent_attested_at is null
         and consent_attested_by is null
         and consent_notice_version is null
+        and consent_sharing_at is null
       )
       or (
+        -- no_formal_authority is the case this product exists for: the parent
+        -- can no longer decide and nobody holds a proxy, power of attorney or
+        -- guardianship. The four-option version forced those families to claim
+        -- something untrue, and a flow that manufactures false attestations
+        -- devalues the true ones too. Recorded as its own value so it can be
+        -- counted and revisited rather than hidden inside 'parent_agreed'.
         consent_basis in (
           'parent_agreed',
           'healthcare_proxy',
           'power_of_attorney',
-          'guardianship'
+          'guardianship',
+          'no_formal_authority'
         )
         and consent_attested_at is not null
         and consent_attested_by is not null
         and consent_notice_version is not null
+        and consent_sharing_at is not null
       )
     );
   end if;
@@ -88,7 +107,10 @@ begin
     select 1 from pg_constraint where conname = 'parents_consent_required'
   ) then
     alter table parents add constraint parents_consent_required
-      check (deleted_at is not null or consent_basis is not null) not valid;
+      check (
+        deleted_at is not null
+        or (consent_basis is not null and consent_sharing_at is not null)
+      ) not valid;
   end if;
 end $$;
 
@@ -110,6 +132,7 @@ create table if not exists parent_consent_events (
   event                  text not null,   -- attested | re_attested | revoked_by_deletion
   consent_basis          text,
   consent_attested_at    timestamptz,
+  consent_sharing_at     timestamptz,
   consent_notice_version text,
   claimed_by             uuid,
   recorded_by            uuid,
@@ -151,9 +174,30 @@ begin
       using errcode = 'check_violation';
   end if;
 
+  if NEW.deleted_at is null and NEW.consent_sharing_at is null then
+    raise exception
+      'Holding their health data and showing it to the rest of the care circle are two separate answers, and the second one (consent_sharing_at) is missing. See G1-32.'
+      using errcode = 'check_violation';
+  end if;
+
   if NEW.consent_attested_at is not null
      and NEW.consent_attested_at > now() + interval '1 day' then
     raise exception 'consent_attested_at cannot be in the future'
+      using errcode = 'check_violation';
+  end if;
+
+  if NEW.consent_sharing_at is not null
+     and NEW.consent_sharing_at > now() + interval '1 day' then
+    raise exception 'consent_sharing_at cannot be in the future'
+      using errcode = 'check_violation';
+  end if;
+
+  if TG_OP = 'UPDATE'
+     and OLD.consent_sharing_at is not null
+     and NEW.consent_sharing_at is null
+     and NEW.deleted_at is null then
+    raise exception
+      'The sharing answer cannot be erased. Delete the parent record instead — that is what withdrawing permission means.'
       using errcode = 'check_violation';
   end if;
 
@@ -190,7 +234,8 @@ begin
   elsif NEW.deleted_at is not null and OLD.deleted_at is null then
     kind := 'revoked_by_deletion';
   elsif NEW.consent_basis is distinct from OLD.consent_basis
-     or NEW.consent_attested_at is distinct from OLD.consent_attested_at then
+     or NEW.consent_attested_at is distinct from OLD.consent_attested_at
+     or NEW.consent_sharing_at is distinct from OLD.consent_sharing_at then
     kind := 're_attested';
   else
     return NEW;   -- an ordinary edit: nothing about consent changed
@@ -198,10 +243,10 @@ begin
 
   insert into parent_consent_events (
     parent_id, family_id, event, consent_basis, consent_attested_at,
-    consent_notice_version, claimed_by, recorded_by
+    consent_sharing_at, consent_notice_version, claimed_by, recorded_by
   ) values (
     NEW.id, NEW.family_id, kind, NEW.consent_basis, NEW.consent_attested_at,
-    NEW.consent_notice_version, NEW.consent_attested_by, auth.uid()
+    NEW.consent_sharing_at, NEW.consent_notice_version, NEW.consent_attested_by, auth.uid()
   );
   return NEW;
 end;
@@ -247,7 +292,10 @@ drop policy if exists parents_insert on parents;
 create policy parents_insert on parents
   for insert with check (
     is_family_member(family_id)
-    and (deleted_at is not null or consent_basis is not null)
+    and (
+      deleted_at is not null
+      or (consent_basis is not null and consent_sharing_at is not null)
+    )
   );
 
 drop policy if exists parents_update on parents;
@@ -255,7 +303,10 @@ create policy parents_update on parents
   for update using (is_family_member(family_id))
   with check (
     is_family_member(family_id)
-    and (deleted_at is not null or consent_basis is not null)
+    and (
+      deleted_at is not null
+      or (consent_basis is not null and consent_sharing_at is not null)
+    )
   );
 
 -- ---------------------------------------------------------------------------
@@ -270,7 +321,9 @@ declare
   unattested int;
 begin
   select count(*) into unattested
-    from parents where deleted_at is null and consent_basis is null;
+    from parents
+   where deleted_at is null
+     and (consent_basis is null or consent_sharing_at is null);
 
   if unattested = 0 then
     execute 'alter table parents validate constraint parents_consent_required';

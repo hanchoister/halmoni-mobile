@@ -93,9 +93,10 @@ console.log('\nparent consent — health data about someone who never signed up'
     CONSENT_BASES,
     CONSENT_NOTICE_VERSION,
     NOTICE_ARCHIVE,
+    isAttestationStale,
   } = load('consent.js');
 
-  const good = buildConsent('parent_agreed', 'user-1');
+  const good = buildConsent('parent_agreed', true, 'user-1');
   check('a complete attestation passes', () => {
     assert.strictEqual(validateConsent(good), null);
   });
@@ -105,7 +106,12 @@ console.log('\nparent consent — health data about someone who never signed up'
   check('a made-up basis is refused', () => {
     assert.ok(validateConsent({ ...good, consent_basis: 'she_probably_would' }));
   });
-  for (const field of ['consent_attested_at', 'consent_attested_by', 'consent_notice_version']) {
+  for (const field of [
+    'consent_attested_at',
+    'consent_attested_by',
+    'consent_notice_version',
+    'consent_sharing_at',
+  ]) {
     check(`a half-filled attestation is refused (${field} missing)`, () => {
       assert.ok(validateConsent({ ...good, [field]: null }), `${field} was allowed to be blank`);
     });
@@ -120,7 +126,28 @@ console.log('\nparent consent — health data about someone who never signed up'
     assert.strictEqual(validateConsent({ deleted_at: new Date().toISOString() }), null);
   });
   check('buildConsent refuses an anonymous attestation', () => {
-    assert.throws(() => buildConsent('parent_agreed', ''));
+    assert.throws(() => buildConsent('parent_agreed', true, ''));
+  });
+  // Washington wants the answer about sharing separate from the answer about
+  // holding. The compiler asks for it; this is the check that it is not just
+  // accepted and dropped. G1-32.
+  check('buildConsent refuses to assume the sharing answer', () => {
+    assert.throws(() => buildConsent('parent_agreed', false, 'user-1'));
+  });
+  check('a sharing timestamp dated in the future is refused', () => {
+    const soon = new Date(Date.now() + 5 * 86400000).toISOString();
+    assert.ok(validateConsent({ ...good, consent_sharing_at: soon }));
+  });
+  check('the honest no-authority basis is a real basis', () => {
+    assert.strictEqual(validateConsent(buildConsent('no_formal_authority', true, 'user-1')), null);
+  });
+  // Nothing acts on staleness yet; New York's act (G2-40) would expire an
+  // authorisation after a year, and this is the difference between adding a
+  // reminder and redesigning.
+  check('an attestation older than a year reads as stale', () => {
+    const old = new Date(Date.now() - 400 * 86400000).toISOString();
+    assert.strictEqual(isAttestationStale({ ...good, consent_attested_at: old }), true);
+    assert.strictEqual(isAttestationStale(good), false);
   });
   check('every offered basis is a real one', () => {
     for (const b of CONSENT_BASES) assert.ok(isConsentBasis(b), b);
@@ -287,6 +314,56 @@ console.log('\ndose horizon — the medication that vanished on day 91');
     } finally {
       process.env.TZ = tz;
     }
+  });
+}
+
+console.log('\nterms — what the USER agrees to, for themselves (G1-33)');
+{
+  const {
+    buildTermsAcceptances,
+    validateAcceptance,
+    needsAcceptance,
+    ACCEPTANCE_LABEL,
+    TERMS_VERSION,
+    PRIVACY_VERSION,
+  } = load('terms.js');
+
+  const rows = buildTermsAcceptances('user-1');
+  check('accepting records both documents separately', () => {
+    assert.deepStrictEqual(rows.map((r) => r.document).sort(), ['privacy', 'terms']);
+  });
+  check('each row carries the version that was shown', () => {
+    assert.strictEqual(rows.find((r) => r.document === 'terms').version, TERMS_VERSION);
+    assert.strictEqual(rows.find((r) => r.document === 'privacy').version, PRIVACY_VERSION);
+  });
+  check('an anonymous acceptance is refused', () => {
+    assert.throws(() => buildTermsAcceptances(''));
+  });
+  for (const row of rows) {
+    check(`a complete ${row.document} acceptance passes`, () =>
+      assert.strictEqual(validateAcceptance(row), null));
+  }
+  check('an acceptance dated in the future is refused', () => {
+    const soon = new Date(Date.now() + 5 * 86400000).toISOString();
+    assert.ok(validateAcceptance({ ...rows[0], accepted_at: soon }));
+  });
+  check('no history means they have not accepted', () => {
+    assert.strictEqual(needsAcceptance([]), true);
+  });
+  check('accepting the shipping versions is enough', () => {
+    assert.strictEqual(needsAcceptance(rows), false);
+  });
+  // Bumping one document must ask again, or a changed privacy policy would
+  // ride on a year-old tick of a different box.
+  check('a bumped version asks again', () => {
+    const stale = rows.map((r) => (r.document === 'privacy' ? { ...r, version: '2000-01-01' } : r));
+    assert.strictEqual(needsAcceptance(stale), true);
+  });
+  // The label is the whole agreement as far as the user is concerned.
+  check('the label agrees to the Terms and only READS the privacy policy', () => {
+    assert.match(ACCEPTANCE_LABEL, /agree/i);
+    assert.match(ACCEPTANCE_LABEL, /read[^,;.]*privacy policy/i);
+    assert.doesNotMatch(ACCEPTANCE_LABEL, /agree[^,;.]*privacy policy/i);
   });
 }
 
