@@ -8,7 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Screen } from '@/components/ui/screen';
 import { list } from '@/lib/db/repository';
 import { useDataVersion } from '@/lib/db/signal';
-import { analyzeSymptoms, isKnownMed, type Finding, type FindingTier } from '@/lib/detective';
+import { analyzeSymptoms, type Finding } from '@/lib/detective';
 import { dismissFinding, loadDismissedPairs } from '@/lib/detective-dismissals';
 import { useFamily } from '@/lib/family';
 import { formatDateShort } from '@/lib/format';
@@ -22,12 +22,6 @@ type SymptomRow = {
   description: string;
   observed_at: string;
   possible_med_links: string[] | null;
-};
-
-const TIER_LABEL: Record<FindingTier, string> = {
-  urgent: 'Call the doctor today',
-  high: 'Mention at the next visit',
-  low: 'Probably nothing — mention if it persists',
 };
 
 export default function PatternsScreen() {
@@ -77,12 +71,12 @@ export default function PatternsScreen() {
   async function onDismiss(symptomId: string, medId: string, medName: string) {
     if (!familyId || !currentParent) return;
     Alert.alert(
-      `Mark not related to ${medName}?`,
-      'This will hide this symptom from the detective. Use after you\'ve discussed it with the doctor.',
+      'Mark as discussed with the doctor?',
+      `This hides it from the ${medName} list. Use it after you have talked it over with the doctor.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Mark reviewed',
+          text: 'Mark discussed',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -121,42 +115,23 @@ export default function PatternsScreen() {
           Halmoni is not telling you what caused anything, and cannot. All it does is notice
           that a symptom was logged soon after a medication started, or that someone in the
           family linked the two. That is a reason to ask a question, not an answer. Bring these
-          to the doctor and let them judge.
+          to the doctor and let them judge. If something seems serious, call the doctor or 911.
         </Text>
       </Card>
 
       {findings.length === 0 ? (
         <EmptyState
           icon="leaf"
-          title="Nothing to ask about"
-          message="Nothing to review right now. Log symptoms as you notice them and they'll be matched here."
+          title="Nothing logged yet"
+          message="Symptoms you log after a medication starts are gathered here for the next appointment."
         />
       ) : (
         findings.map((f) => {
-          const inKb = isKnownMed(f.medName);
-          const tone: 'warm' | undefined =
-            f.tier === 'urgent' || f.tier === 'high' ? 'warm' : undefined;
           return (
-            <Card
-              key={f.medId}
-              tint={tone}
-              style={
-                f.tier === 'urgent'
-                  ? { borderColor: palette.terracotta600, borderWidth: 2 }
-                  : undefined
-              }>
+            <Card key={f.medId} tint="cream">
               <Pressable onPress={() => router.push(`/medication/${f.medId}`)}>
-                <Text style={styles.tierLabel}>{TIER_LABEL[f.tier]}</Text>
-                <Text style={styles.medName}>{f.medName}</Text>
-                <Text style={styles.reason}>
-                  {inKb
-                    ? f.tier === 'low'
-                      ? 'Started around the same time. These symptoms are not known effects of this medication.'
-                      : f.tier === 'high'
-                      ? 'These symptoms are listed effects of this medication. Worth raising.'
-                      : 'These symptoms are listed as serious effects of this medication. Ask the doctor promptly.'
-                    : 'Started around the same time. Halmoni has no effect data for this medication.'}
-                </Text>
+                <Text style={styles.tierLabel}>For the next appointment</Text>
+                <Text style={styles.medName}>Since starting {f.medName}</Text>
               </Pressable>
               <View style={styles.symptomList}>
                 {f.symptoms.map((s) => (
@@ -169,14 +144,13 @@ export default function PatternsScreen() {
                           ? ` · ${s.daysAfter} day${s.daysAfter === 1 ? '' : 's'} after starting`
                           : ''}
                         {s.explicitLink ? ' · linked by a family member' : ''}
-                        {s.matchedKeyword ? ` · matches "${s.matchedKeyword}"` : ''}
                         {s.environmentalContext
                           ? ` · noted with "${s.environmentalContext}"`
                           : ''}
                       </Text>
                     </View>
                     <Button
-                      title="Not related"
+                      title="Discussed"
                       variant="secondary"
                       onPress={() => onDismiss(s.id, f.medId, f.medName)}
                     />

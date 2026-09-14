@@ -119,10 +119,10 @@ export default function MedsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.detectiveTitle}>
               {patternCount === 1
-                ? '1 question worth asking'
-                : `${patternCount} questions worth asking`}
+                ? '1 medication to bring up'
+                : `${patternCount} medications to bring up`}
             </Text>
-            <Text style={styles.detectiveSub}>Symptoms logged soon after a medication started →</Text>
+            <Text style={styles.detectiveSub}>Symptoms logged since a medication started →</Text>
           </View>
         </Pressable>
       )}

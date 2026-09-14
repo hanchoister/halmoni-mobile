@@ -60,8 +60,8 @@ When someone else takes over, send them a hand-off with the things they actually
 APPOINTMENTS WITH A NAME ON THEM
 Every visit has someone assigned to take them. Afterwards, note what the doctor said so it isn't lost.
 
-QUESTIONS TO ASK THE DOCTOR
-If symptoms get logged after a medication starts, Halmoni lists them together so you remember to raise them at the next appointment. It is a prompt for a conversation with the doctor, not a diagnosis.
+A LIST FOR THE NEXT APPOINTMENT
+Symptoms logged after a medication starts are gathered in one place, so none of them are forgotten by the time you see the doctor. Halmoni does not assess symptoms or suggest what caused them — it just makes sure the list is in your hand at the appointment.
 
 A FAMILY THREAD THAT STAYS ON TOPIC
 Messages about your parent, tagged with who wrote them, alongside the record they refer to.
@@ -82,8 +82,10 @@ Halmoni is a coordination and record-keeping tool. It does not give medical advi
 
 - **No reminders or notifications.** Not built yet (plan `G2-09`). Add a line only once it ships.
 - **No share link or passphrase.** Removed 2026-09-12 (plan `G1-31`); the Care Kit PDF is the only share path.
-- **"Questions to ask", never a cause.** Plan `G1-23` keeps symptom grouping only as a prompt for a
-  conversation with the doctor. Don't let "may be causing", "side effect detected" or similar creep in.
+- **No assessment of symptoms at all.** Reframed 2026-09-13: the app no longer matches symptoms
+  against a side-effect list or sorts them by urgency. It reports what was logged and when, and
+  says so. Don't let "may be causing", "side effect detected", "probably nothing" or "call the
+  doctor today" creep back into the listing or the app.
 - **Gender-neutral about the parent.** Same rule as the website.
 
 ## Screenshot captions

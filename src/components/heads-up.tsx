@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card';
 import { analyzeSymptoms, type Finding } from '@/lib/detective';
 import { daysBetween, formatDateShort } from '@/lib/format';
 import { Icon, IconName } from '@/components/ui/icon';
-import { color, palette, spacing, typography } from '@/lib/theme';
+import { color, spacing, typography } from '@/lib/theme';
 
 type Med = {
   id: string;
@@ -77,17 +77,11 @@ export function HeadsUp({
 }) {
   const nowIso = new Date().toISOString();
 
-  // Urgent findings lead everything else — safety first, before handoffs and refills.
+  // Halmoni does not rank symptoms. Every medication with something logged since it
+  // started is shown the same way, as a list to raise with the doctor.
   const findings = analyzeSymptoms(meds, symptoms, dismissedFindings);
-  const urgentFindings = findings.filter((f) => f.tier === 'urgent');
-  const highFindings = findings.filter((f) => f.tier === 'high');
-  const lowFindings = findings.filter((f) => f.tier === 'low');
 
   const items: Item[] = [];
-
-  urgentFindings.forEach((f) => {
-    items.push({ key: `find-${f.medId}`, kind: 'finding', finding: f });
-  });
 
   handoffs
     .filter((h) => h.to_member_id === meId && !h.accepted_at)
@@ -116,18 +110,16 @@ export function HeadsUp({
     }
   });
 
-  highFindings.forEach((f) => {
+  findings.forEach((f) => {
     items.push({ key: `find-${f.medId}`, kind: 'finding', finding: f });
   });
 
-  const nothingUrgent = items.length === 0;
-
-  if (nothingUrgent && lowFindings.length === 0) {
+  if (items.length === 0) {
     return (
       <Card>
         <Text style={styles.sectionLabel}>HEADS UP</Text>
         <Text style={styles.quiet}>
-          All quiet — no urgent refills, side effects, or pending hand-offs.
+          All quiet — nothing to refill, nothing new logged, no pending hand-offs.
         </Text>
       </Card>
     );
@@ -136,13 +128,6 @@ export function HeadsUp({
   return (
     <View style={{ gap: spacing.md }}>
       <Text style={styles.groupLabel}>HEADS UP</Text>
-      {nothingUrgent && (
-        <Card>
-          <Text style={styles.quiet}>
-            All quiet — no urgent refills, side effects, or pending hand-offs.
-          </Text>
-        </Card>
-      )}
       {items.slice(0, 4).map((it) => {
         if (it.kind === 'refill') {
           return (
@@ -164,36 +149,28 @@ export function HeadsUp({
         }
         if (it.kind === 'finding') {
           const f = it.finding;
-          const isUrgent = f.tier === 'urgent';
-          const title = isUrgent
-            ? `Call the doctor today about ${f.medName}`
-            : `Mention at the next ${f.medName} visit`;
           return (
-            <Card
-              key={it.key}
-              tint="warm"
-              style={isUrgent ? { borderColor: palette.terracotta600, borderWidth: 2 } : undefined}>
+            <Card key={it.key} tint="warm">
               <Pressable onPress={() => router.push(`/medication/${f.medId}`)}>
-                <Eyebrow
-                  tone={color.accent}
-                  label={isUrgent ? 'CALL TODAY' : 'WORTH ASKING ABOUT'}
-                  icon={isUrgent ? 'alert' : undefined}
-                />
+                <Eyebrow tone={color.accent} label="FOR YOUR NEXT APPOINTMENT" />
                 <View>
-                  <Text style={styles.title}>{title}</Text>
+                  <Text style={styles.title}>Symptoms logged since starting {f.medName}</Text>
                   {f.symptoms.slice(0, 3).map((s) => (
                     <Text key={s.id} style={styles.hint}>
                       · &ldquo;{s.description}&rdquo; ({formatDateShort(s.observedAt)}
                       {s.daysAfter != null
                         ? `, ${s.daysAfter} day${s.daysAfter === 1 ? '' : 's'} after starting`
                         : ''}
-                      {s.matchedKeyword ? ` · matches known "${s.matchedKeyword}"` : ''}
                       )
                     </Text>
                   ))}
                   {f.symptoms.length > 3 && (
                     <Text style={styles.hint}>· +{f.symptoms.length - 3} more</Text>
                   )}
+                  <Text style={styles.hint}>
+                    Halmoni doesn&rsquo;t assess symptoms. If something seems serious, call the
+                    doctor or 911.
+                  </Text>
                 </View>
               </Pressable>
             </Card>
@@ -224,11 +201,9 @@ export function HeadsUp({
           </Card>
         );
       })}
-      {lowFindings.length > 0 && (
+      {findings.length > 0 && (
         <Pressable onPress={() => router.push('/patterns')} style={styles.patternsLink}>
-          <Text style={styles.patternsText}>
-            See {lowFindings.length} possible pattern{lowFindings.length === 1 ? '' : 's'} →
-          </Text>
+          <Text style={styles.patternsText}>See the full list for the appointment →</Text>
         </Pressable>
       )}
     </View>

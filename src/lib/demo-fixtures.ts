@@ -222,7 +222,7 @@ export function buildDemoStore(): DemoStore {
       refill_by: dateOnly(daysFromNow(50)),
       pills_left: 24,
       notes: 'Started after MCI diagnosis. Watch for GI upset, insomnia, dizziness.',
-      // Recent start — HeadsUp "possible side effect?" detective links symptoms to it.
+      // Recent start — HeadsUp lists symptoms logged in the 14 days since, for the appointment.
       started_at: dateOnly(daysAgo(12)),
       created_at: daysAgo(12),
     },
@@ -372,7 +372,7 @@ export function buildDemoStore(): DemoStore {
 
   const symptoms = [
     // 4 dizziness episodes, all evening, all post-Donepezil start (12 days ago).
-    // HeadsUp detective flags these as possible Donepezil side effect.
+    // HeadsUp lists these under "Symptoms logged since starting Donepezil".
     {
       id: nextId('sym'),
       parent_id: DEMO_PARENT_ID,
