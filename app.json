@@ -54,7 +54,13 @@
         }
       ],
       "expo-secure-store",
-      "@sentry/react-native",
+      [
+        "@sentry/react-native/expo",
+        {
+          "organization": "hana-zp",
+          "project": "react-native"
+        }
+      ],
       "expo-image",
       "expo-sharing",
       "expo-status-bar"
