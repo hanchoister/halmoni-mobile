@@ -79,13 +79,22 @@ parent's scanned documents would look successful. Revisit this section then.
 
 - **The drill covers the data, not the application.** Restoring today's backup
   would give back every medication and dose, and nobody able to log in.
-- **What Supabase does on its own** — automated backup frequency and whether
-  point-in-time recovery is available — is a function of the project's plan and
-  has never been checked. Until it is, assume the only backup that exists is
-  one someone ran by hand.
-- **Nothing is automated.** There is no scheduled dump. The runbook in the
-  launch plan is a thing a person does, and the last time a person did it was
-  2026-09-02.
+- **What Supabase does on its own — checked 2026-09-24.** The organisation
+  (`hanchoister's org`) is on the **Pro** plan, so Supabase's own automated
+  daily backups apply; `G0-03` bought that on 09-03. An earlier version of this
+  paragraph said it "has never been checked", which was wrong — the plan was
+  recorded in `G0-03` all along and nobody joined it up.
+  **One claim still to check in the dashboard:** the launch plan describes Pro
+  as bringing "automated PITR". Point-in-time recovery is a paid add-on on top
+  of Pro rather than part of it, so the honest position is daily backups yes,
+  PITR unconfirmed. That difference matters: daily backups lose up to a day,
+  PITR loses minutes.
+- **Nothing *of ours* is automated.** Supabase's own daily backups run without
+  us, per the row above. What does not exist is a scheduled dump we control and
+  can restore from on our own terms — the runbook in the launch plan is a thing
+  a person does, and the last time a person did it was 2026-09-02. The two are
+  not interchangeable: Supabase's backup restores a Supabase project, and the
+  drill above is what proves we could stand the app up somewhere else.
 - **Two tables have never been through any drill:** `audit_log` and
   `share_kits` were added on 09-03, after it. (`share_kits` was later removed
   by `G1-31`, so in practice it is `audit_log`, plus everything added since:
