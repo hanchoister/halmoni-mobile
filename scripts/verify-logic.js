@@ -399,5 +399,153 @@ console.log('\nterms — what the USER agrees to, for themselves (G1-33)');
   });
 }
 
+console.log('\ndose timezones — the 08:00 pill a sibling saw at 05:00 (G2-27, G2-12)');
+{
+  const {
+    planTopUp,
+    scheduleZone,
+    zoneSupported,
+    zonedWallClockToUtc,
+    zoneOffsetMinutes,
+  } = load('dose-plan.js');
+
+  const NY = 'America/New_York';
+  const MED = 'med-tz';
+
+  // If the runtime cannot resolve zones there is nothing to assert, and saying
+  // so beats a green tick. Node can; Hermes is checked on a device (G2-56).
+  check('this runtime can resolve IANA zones', () => {
+    assert.strictEqual(zoneSupported(NY), true);
+    assert.strictEqual(zoneSupported('Not/AZone'), false);
+  });
+
+  check('a schedule reports the zone its times are written in', () => {
+    assert.strictEqual(scheduleZone([{ time: '08:00', tz: NY }]), NY);
+    assert.strictEqual(scheduleZone([{ time: '08:00' }]), null);
+    assert.strictEqual(scheduleZone([]), null);
+    assert.strictEqual(scheduleZone(undefined), null);
+  });
+
+  // The numbers below are absolute instants, so they hold whatever timezone
+  // this process is running in. That is the whole point: before the fix these
+  // values moved with the machine.
+  check('08:00 in New York is 12:00Z in summer and 13:00Z in winter', () => {
+    assert.strictEqual(
+      new Date(zonedWallClockToUtc(2026, 6, 16, 8, 0, NY)).toISOString(),
+      '2026-06-16T12:00:00.000Z',
+    );
+    assert.strictEqual(
+      new Date(zonedWallClockToUtc(2026, 1, 16, 8, 0, NY)).toISOString(),
+      '2026-01-16T13:00:00.000Z',
+    );
+  });
+
+  check('the offset is read at the right instant, not the naive one', () => {
+    assert.strictEqual(zoneOffsetMinutes(Date.parse('2026-06-16T12:00:00Z'), NY), -240);
+    assert.strictEqual(zoneOffsetMinutes(Date.parse('2026-01-16T13:00:00Z'), NY), -300);
+  });
+
+  // The bug this module's own header warned about: adding 24 hours repeatedly
+  // walks an 08:00 dose to 07:00 or 09:00 across a daylight-saving boundary and
+  // leaves it there. US spring-forward 2026 is 2026-03-08.
+  check('an 08:00 dose stays 08:00 across spring-forward', () => {
+    const before = new Date(zonedWallClockToUtc(2026, 3, 7, 8, 0, NY)).toISOString();
+    const after = new Date(zonedWallClockToUtc(2026, 3, 9, 8, 0, NY)).toISOString();
+    assert.strictEqual(before, '2026-03-07T13:00:00.000Z'); // EST, UTC-5
+    assert.strictEqual(after, '2026-03-09T12:00:00.000Z'); // EDT, UTC-4
+  });
+
+  check('an 08:00 dose stays 08:00 across autumn fall-back', () => {
+    // US fall-back 2026 is 2026-11-01.
+    assert.strictEqual(
+      new Date(zonedWallClockToUtc(2026, 10, 31, 8, 0, NY)).toISOString(),
+      '2026-10-31T12:00:00.000Z',
+    );
+    assert.strictEqual(
+      new Date(zonedWallClockToUtc(2026, 11, 2, 8, 0, NY)).toISOString(),
+      '2026-11-02T13:00:00.000Z',
+    );
+  });
+
+  // 02:30 does not exist on a spring-forward morning. A medication must not
+  // silently lose a dose that day, so it resolves forward to 03:30 local.
+  check('a wall-clock time that does not exist resolves forward, not away', () => {
+    assert.strictEqual(
+      new Date(zonedWallClockToUtc(2026, 3, 8, 2, 30, NY)).toISOString(),
+      '2026-03-08T07:30:00.000Z', // 03:30 EDT
+    );
+  });
+
+  // The quiet, worse symptom. Dose ids come from the instant, so before the fix
+  // a device in another zone did not collide with the existing rows — it minted
+  // a second, parallel set of doses for the same medication.
+  check('every zone derives the same instants, so the same dose ids', () => {
+    const now = new Date('2026-06-15T09:30:00.000Z');
+    const plan = planTopUp({
+      medicationId: MED,
+      schedule: [{ time: '08:00', tz: NY }],
+      existing: [],
+      now,
+      horizonDays: 3,
+    });
+    const instants = plan.create.map((d) => d.scheduled_at);
+    // 08:00 New York on the 15th, 16th and 17th — regardless of where the
+    // device planning them happens to be. The 15th counts: `now` is 09:30Z,
+    // which is 05:30 in New York, so that morning's dose is still ahead.
+    assert.deepStrictEqual(instants, [
+      '2026-06-15T12:00:00.000Z',
+      '2026-06-16T12:00:00.000Z',
+      '2026-06-17T12:00:00.000Z',
+    ]);
+  });
+
+  check('a zoned top-up does not duplicate doses another device already wrote', () => {
+    const now = new Date('2026-06-15T09:30:00.000Z');
+    const already = ['2026-06-15T12:00:00.000Z', '2026-06-16T12:00:00.000Z'].map((iso) => ({
+      id: 'whatever',
+      scheduled_at: iso,
+    }));
+    const plan = planTopUp({
+      medicationId: MED,
+      schedule: [{ time: '08:00', tz: NY }],
+      existing: already,
+      now,
+      horizonDays: 3,
+    });
+    assert.deepStrictEqual(
+      plan.create.map((d) => d.scheduled_at),
+      ['2026-06-17T12:00:00.000Z'],
+    );
+  });
+
+  // Schedules saved before the fix must keep working exactly as they did.
+  check('a schedule with no zone still plans, using the reader\'s own clock', () => {
+    const now = new Date('2026-06-15T09:30:00.000Z');
+    const plan = planTopUp({
+      medicationId: MED,
+      schedule: [{ time: '08:00' }],
+      existing: [],
+      now,
+      horizonDays: 3,
+    });
+    assert.ok(plan.create.length >= 2, `planned ${plan.create.length}`);
+    for (const d of plan.create) {
+      assert.strictEqual(new Date(d.scheduled_at).getHours(), 8, 'not 08:00 local');
+    }
+  });
+
+  check('an unresolvable zone falls back rather than throwing', () => {
+    const now = new Date('2026-06-15T09:30:00.000Z');
+    const plan = planTopUp({
+      medicationId: MED,
+      schedule: [{ time: '08:00', tz: 'Not/AZone' }],
+      existing: [],
+      now,
+      horizonDays: 2,
+    });
+    assert.ok(plan.create.length >= 1, 'a bad zone lost every dose');
+  });
+}
+
 console.log(failures === 0 ? '\nPASS: all logic checks' : `\nFAIL: ${failures} check(s)`);
 process.exit(failures === 0 ? 0 : 1);

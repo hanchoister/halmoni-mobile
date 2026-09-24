@@ -34,5 +34,14 @@ jobs:
         run: npm run verify:doses
       - name: Logic — dates and PHI scrubbing
         run: npm run verify:logic
+      # Again, from the other side of the world. The dose planner used to
+      # materialise wall-clock times in whatever zone the machine was in, so a
+      # suite that only ever ran in one zone could not see the bug (G2-27) —
+      # and a runner is always UTC, which is exactly the zone that hides it.
+      # Tokyo is chosen because it is a whole day ahead for part of the day.
+      - name: Logic — again, in a far-away timezone
+        env:
+          TZ: Asia/Tokyo
+        run: npm run verify:logic
       - name: Sentry scrubbing must not leak PHI
         run: npm run verify:scrub

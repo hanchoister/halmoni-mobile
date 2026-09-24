@@ -14,12 +14,13 @@ import { list } from '@/lib/db/repository';
 import { useDataVersion } from '@/lib/db/signal';
 import { loadDismissedPairs } from '@/lib/detective-dismissals';
 import { useFamily } from '@/lib/family';
-import { calcAge, formatRelative, formatTime, isSameDay } from '@/lib/format';
+import { calcAge, formatDoseTime, formatRelative, formatTime, isSameDay } from '@/lib/format';
 import { useMe } from '@/lib/me';
 import { newId } from '@/lib/newid';
 import { useParents } from '@/lib/parent';
 import { writeRow } from '@/lib/sync/write-path';
 import { color, fontFamily, palette, radius, spacing, typography } from '@/lib/theme';
+import { scheduleZone } from '@/lib/dose-plan';
 
 type DoseRow = {
   id: string;
@@ -35,7 +36,7 @@ type MedRow = {
   parent_id: string;
   name: string;
   dose: string | null;
-  schedule: { time: string; withFood?: boolean }[];
+  schedule: { time: string; withFood?: boolean; tz?: string }[];
   refill_by: string | null;
   started_at: string | null;
 };
@@ -415,7 +416,7 @@ export default function TodayScreen() {
                     {med?.name ?? 'Medication'}
                   </Text>
                   <Text style={styles.doseSub}>
-                    {formatTime(dose.scheduled_at)}
+                    {formatDoseTime(dose.scheduled_at, scheduleZone(med?.schedule))}
                     {med?.dose ? ` · ${med.dose}` : ''}
                   </Text>
                   {giver && (

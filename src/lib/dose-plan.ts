@@ -25,12 +25,27 @@
  *                  longer match. Runs only when a person on this device just
  *                  edited the schedule.
  *
- * The split exists because dose times are wall-clock times materialised into
- * UTC instants using the local timezone of whichever device wrote them. A
- * sibling in California opening the app must not quietly rewrite doses their
- * sister in New York created — so the unattended path is additive only. The
- * underlying timezone modelling is a separate open item; this keeps that bug
- * from being made worse by an automatic job.
+ * The split exists because dose times used to be wall-clock times materialised
+ * into UTC using the local timezone of whichever device wrote them. A sibling
+ * in California opening the app must not quietly rewrite doses their sister in
+ * New York created — so the unattended path is additive only.
+ *
+ * That underlying bug is now fixed (G2-27, 2026-09-24). A schedule carries the
+ * zone its times are written in, and every device materialises them in that
+ * zone. Two consequences worth naming, because the first was the visible
+ * symptom and the second was the quieter, worse one:
+ *
+ *   - An 08:00 dose entered in New York reads as 08:00 to a sibling in
+ *     California, instead of 05:00.
+ *   - Every device now derives the same instants, so it derives the same dose
+ *     ids. Before, a device in another zone did not collide with the existing
+ *     rows — it added a second, parallel set of doses for the same medication,
+ *     and the additive-only rule above made that permanent rather than
+ *     preventing it.
+ *
+ * Schedules saved before the fix carry no zone and keep the old reader-local
+ * behaviour. Rewriting them would move doses a parent has been taking for
+ * weeks, and this module cannot honestly guess which zone was meant.
  */
 
 export const DOSE_HORIZON_DAYS = 90;
@@ -38,7 +53,137 @@ export const DOSE_HORIZON_DAYS = 90;
 /** Below this many days of runway, a top-up is worth doing. */
 export const TOP_UP_THRESHOLD_DAYS = 60;
 
-export type Slot = { time: string; withFood?: boolean };
+export type Slot = {
+  time: string;
+  withFood?: boolean;
+  /**
+   * The IANA zone the wall-clock `time` is written in — "America/New_York".
+   *
+   * Stamped from the device that created or last edited the schedule, and then
+   * honoured by every other device. Without it, `time` means "08:00 wherever
+   * the reader happens to be", which is how G2-27 happened.
+   *
+   * It lives on the slot rather than on the medication because `medications`
+   * has no timezone column and `schedule` is a TEXT column holding this array,
+   * so a new optional key needs no migration and no DDL on production, while a
+   * new column would need both. One zone per medication is the intent — the
+   * writers stamp the same value on every slot and `scheduleZone` reads the
+   * first one it finds. Normalising it onto the medication (or better, onto the
+   * parent, whose timezone it really is) is worth doing the next time there is
+   * a migration to spend; it is not worth a migration of its own.
+   */
+  tz?: string;
+};
+
+/**
+ * The zone a medication's times are written in, or null for a schedule saved
+ * before `G2-27` — those fall back to the reader's own zone, which is the old
+ * behaviour and the best that can be done without knowing what was meant.
+ */
+export function scheduleZone(schedule: Slot[] | null | undefined): string | null {
+  for (const slot of schedule ?? []) if (slot?.tz) return slot.tz;
+  return null;
+}
+
+/**
+ * The zone this device is in, or null when the runtime cannot say.
+ *
+ * Stamped onto a schedule when it is created or edited. Null means the schedule
+ * stays on the legacy reader-local path rather than being given a zone that
+ * might be wrong — a wrong zone is worse than no zone, because it would be
+ * honoured by every other device.
+ */
+export function deviceZone(): string | null {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return tz && zoneSupported(tz) ? tz : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Whether this runtime can actually resolve a zone. Hermes is not a given. */
+export function zoneSupported(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date(0));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+type Civil = { y: number; m: number; d: number; hh: number; mm: number; ss: number };
+
+/** What the clock on the wall in `tz` reads at the instant `ts`. */
+function civilPartsIn(ts: number, tz: string): Civil {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const p: Record<string, string> = {};
+  for (const part of fmt.formatToParts(new Date(ts))) p[part.type] = part.value;
+  return {
+    y: Number(p.year),
+    m: Number(p.month),
+    d: Number(p.day),
+    // en-US with hour12:false renders midnight as "24" in some ICU versions.
+    hh: Number(p.hour) % 24,
+    mm: Number(p.minute),
+    ss: Number(p.second),
+  };
+}
+
+/** How far `tz` is from UTC, in minutes, at the instant `ts`. */
+export function zoneOffsetMinutes(ts: number, tz: string): number {
+  const c = civilPartsIn(ts, tz);
+  return Math.round((Date.UTC(c.y, c.m - 1, c.d, c.hh, c.mm, c.ss) - ts) / 60_000);
+}
+
+/**
+ * The instant at which the wall clock in `tz` reads the given date and time.
+ *
+ * Two passes, not one. The first guess uses the offset in force at the *naive*
+ * timestamp, which is the wrong side of a daylight-saving boundary for a few
+ * hours a year; re-reading the offset at the corrected instant settles it.
+ *
+ * A wall-clock time that does not exist — 02:30 on a spring-forward morning —
+ * resolves forward, to the same instant as 03:30. That is the conventional
+ * answer and the safe one for a medication: the dose lands once, an hour later,
+ * rather than vanishing from the day.
+ *
+ * Getting that last part right needs the check at the end. Inside the gap the
+ * two passes do not converge, they oscillate between the instant an hour ahead
+ * of the request and the instant half an hour behind it — and the second pass
+ * happens to land on the one BEHIND, which would move a 02:30 dose to 01:30 and
+ * silently give the parent their pill an hour early. So the result is read back
+ * and, when it does not say what was asked for, the later candidate wins.
+ *
+ * An ambiguous time — 01:30 on a fall-back morning, which happens twice —
+ * resolves to the first occurrence, which is what the two passes already agree
+ * on. Both conventions match how every other calendar behaves.
+ */
+export function zonedWallClockToUtc(
+  y: number,
+  m: number,
+  d: number,
+  hh: number,
+  mm: number,
+  tz: string,
+): number {
+  const naive = Date.UTC(y, m - 1, d, hh, mm);
+  const first = naive - zoneOffsetMinutes(naive, tz) * 60_000;
+  const second = naive - zoneOffsetMinutes(first, tz) * 60_000;
+
+  const reads = civilPartsIn(second, tz);
+  const asked = reads.y === y && reads.m === m && reads.d === d && reads.hh === hh && reads.mm === mm;
+  return asked ? second : Math.max(first, second);
+}
 
 export type ExistingDose = {
   id: string;
@@ -162,6 +307,44 @@ export function doseId(medicationId: string, scheduledAtIso: string): string {
  * the second approach walks an 8:00 dose to 7:00 or 9:00 and leaves it there.
  */
 function scheduledInstants(from: Date, days: number, schedule: Slot[]): string[] {
+  const zone = scheduleZone(schedule);
+
+  // The zoned path. Days are counted on the calendar in the medication's own
+  // zone, so every device — wherever it is — derives the same instants and
+  // therefore the same dose ids. That matters twice over: it is why a sibling
+  // in California now sees a New York 08:00 dose at 08:00, and it is why she no
+  // longer mints a second, parallel set of dose rows for the same medication
+  // (the ids come from the instant, so a different instant is a different row).
+  if (zone && zoneSupported(zone)) {
+    const out: string[] = [];
+    const start = civilPartsIn(from.getTime(), zone);
+    for (let offset = 0; offset < days; offset++) {
+      // A UTC proxy is only a way to do calendar arithmetic on y/m/d; it never
+      // becomes the answer. Month ends and leap years come free.
+      const proxy = new Date(Date.UTC(start.y, start.m - 1, start.d));
+      proxy.setUTCDate(proxy.getUTCDate() + offset);
+      for (const slot of schedule) {
+        const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(slot.time ?? '');
+        if (!m) continue; // a malformed time is skipped, never turned into a dose
+        const ts = zonedWallClockToUtc(
+          proxy.getUTCFullYear(),
+          proxy.getUTCMonth() + 1,
+          proxy.getUTCDate(),
+          parseInt(m[1], 10),
+          parseInt(m[2], 10),
+          zone,
+        );
+        out.push(new Date(ts).toISOString());
+      }
+    }
+    return out;
+  }
+
+  // The legacy path, for schedules saved before G2-27 stamped a zone, and for
+  // any runtime whose Intl cannot resolve zones. Wall-clock times are read in
+  // the reader's own zone. Kept deliberately: rewriting an old schedule's
+  // instants would move doses a parent has been taking for weeks, and guessing
+  // which zone was meant is not something this function can do honestly.
   const out: string[] = [];
   const day0 = new Date(from);
   day0.setHours(0, 0, 0, 0);
@@ -170,7 +353,7 @@ function scheduledInstants(from: Date, days: number, schedule: Slot[]): string[]
     day.setDate(day0.getDate() + offset);
     for (const slot of schedule) {
       const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(slot.time ?? '');
-      if (!m) continue; // a malformed time is skipped, never turned into a dose
+      if (!m) continue;
       const at = new Date(day);
       at.setHours(parseInt(m[1], 10), parseInt(m[2], 10), 0, 0);
       out.push(at.toISOString());

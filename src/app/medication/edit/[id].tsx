@@ -9,6 +9,7 @@ import { getById } from '@/lib/db/repository';
 import { rescheduleDoses } from '@/lib/dose-maintenance';
 import { writeRow } from '@/lib/sync/write-path';
 import { palette, radius, spacing } from '@/lib/theme';
+import { deviceZone } from '@/lib/dose-plan';
 
 type Schedule = { time: string; withFood?: boolean };
 
@@ -76,7 +77,12 @@ export default function EditMedicationScreen() {
     }
     setSaving(true);
     try {
-      const schedule = times.map((t) => ({ time: t, withFood: withFood || undefined }));
+      // Stamp the zone on save. For a schedule created before G2-27 this is
+      // also how it acquires one: editing the times is the moment a caregiver
+      // is telling us what they mean, and planReschedule only recomputes
+      // future doses, so nothing already taken moves.
+      const tz = deviceZone() ?? undefined;
+      const schedule = times.map((t) => ({ time: t, withFood: withFood || undefined, tz }));
       const before = ((row.schedule ?? []) as Schedule[]).map((s) => s.time).sort().join(',');
       const after = times.slice().sort().join(',');
       await writeRow('medications', {

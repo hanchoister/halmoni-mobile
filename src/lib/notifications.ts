@@ -35,7 +35,9 @@ import { Platform } from 'react-native';
 import { getDb } from '@/lib/db/client';
 import { list } from '@/lib/db/repository';
 import type { Slot } from '@/lib/dose-plan';
+import { scheduleZone } from '@/lib/dose-plan';
 import { isDemoMode } from '@/lib/demo-mode';
+import { formatDoseTime } from '@/lib/format';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -178,10 +180,12 @@ export async function syncDoseAndRefillNotifications(): Promise<void> {
           schedule: () =>
             scheduleAt(followUp, {
               title: `Still waiting on ${med.name}`,
-              body: `${parentLabel}'s ${med.name} dose from ${at.toLocaleTimeString(undefined, {
-                hour: 'numeric',
-                minute: '2-digit',
-              })} hasn't been logged yet.`,
+              // The dose's own zone, not the reader's: a sibling in another
+              // timezone must not be told the 08:00 dose was "from 5:00 AM".
+              body: `${parentLabel}'s ${med.name} dose from ${formatDoseTime(
+                dose.scheduled_at,
+                scheduleZone(schedule),
+              )} hasn't been logged yet.`,
               data: { type: 'dose-unlogged', doseId: dose.id, medicationId: med.id },
             }),
         });

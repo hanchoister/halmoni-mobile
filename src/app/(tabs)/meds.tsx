@@ -21,7 +21,7 @@ type MedRow = {
   name: string;
   dose: string | null;
   purpose: string | null;
-  schedule: { time: string; withFood?: boolean }[];
+  schedule: { time: string; withFood?: boolean; tz?: string }[];
   refill_by: string | null;
   pills_left: number | null;
   started_at: string | null;

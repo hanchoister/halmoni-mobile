@@ -8,9 +8,44 @@ export function isSameDay(a: string | Date, b: string | Date): boolean {
   );
 }
 
-export function formatTime(iso: string): string {
+export function formatTime(iso: string, tz?: string | null): string {
   const d = new Date(iso);
+  if (tz) {
+    try {
+      return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: tz });
+    } catch {
+      // An unresolvable zone must not blank out a dose time. Fall through.
+    }
+  }
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+/** "America/New_York" → "New York". Good enough to disambiguate, short enough to fit. */
+export function zoneLabel(tz: string): string {
+  const last = tz.split('/').pop() ?? tz;
+  return last.replace(/_/g, ' ');
+}
+
+/**
+ * A dose time, in the zone the schedule was written in, and said out loud when
+ * that is not the reader's own zone (G2-27).
+ *
+ * The naming matters more than the formatting here. A sibling in California
+ * looking at a parent's New York medication needs to read "8:00 AM" — the time
+ * the pill is actually taken, the time the parent will say on the phone — and
+ * needs to know it is not 8am where she is. Showing her "5:00 AM" was the bug;
+ * showing her "8:00 AM" with no hint would be a subtler one.
+ */
+export function formatDoseTime(iso: string, tz?: string | null): string {
+  const time = formatTime(iso, tz);
+  if (!tz) return time;
+  let here: string | undefined;
+  try {
+    here = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    here = undefined;
+  }
+  return here && here !== tz ? `${time} (${zoneLabel(tz)})` : time;
 }
 
 export function formatDate(iso: string): string {

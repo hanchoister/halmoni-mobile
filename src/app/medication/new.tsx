@@ -5,7 +5,7 @@ import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
 import { Screen } from '@/components/ui/screen';
-import { DOSE_HORIZON_DAYS, planTopUp } from '@/lib/dose-plan';
+import { DOSE_HORIZON_DAYS, deviceZone, planTopUp } from '@/lib/dose-plan';
 import { newId } from '@/lib/newid';
 import { useParents } from '@/lib/parent';
 import { writeRow, writeRows } from '@/lib/sync/write-path';
@@ -83,7 +83,10 @@ export default function AddMedicationScreen() {
     }
     setSaving(true);
     try {
-      const schedule = times.map((t) => ({ time: t, withFood: withFood || undefined }));
+      // Stamp the zone these wall-clock times are written in, so every other
+      // device materialises them in this zone rather than its own (G2-27).
+      const tz = deviceZone() ?? undefined;
+      const schedule = times.map((t) => ({ time: t, withFood: withFood || undefined, tz }));
       const today = new Date().toISOString().slice(0, 10);
       const nowIso = new Date().toISOString();
       const medId = newId();

@@ -25,7 +25,7 @@ type Med = {
   name: string;
   dose: string | null;
   purpose: string | null;
-  schedule: { time: string; withFood?: boolean }[];
+  schedule: { time: string; withFood?: boolean; tz?: string }[];
   prescriber: string | null;
   pharmacy: string | null;
   refill_by: string | null;
