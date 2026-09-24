@@ -1,0 +1,80 @@
+# Attack production's row-level security with real user JWTs, and call the
+# family RPCs for real.
+#
+# This is separate from verify.yml on purpose. verify.yml is offline, needs no
+# credentials, and runs on every push and PR. This one signs in to production as
+# real users and writes a handful of rows, so it needs secrets and it runs on a
+# tighter trigger.
+#
+# It exists because every security check before it ran over a privileged
+# connection — the SQL editor or an MCP session — where RLS does not apply. That
+# made "the policies look right" a result produced by a path on which RLS is
+# switched off, and it hid two real bugs for days: a removed member keeping
+# permanent access to a family's health record, and create_invite throwing at
+# runtime so nobody could invite a sibling at all.
+#
+# WHAT IT TOUCHES ON PRODUCTION
+#
+# Three permanent probe accounts, each in throwaway families holding fake data:
+#   A, B — owners of separate families, used to attack each other
+#   C    — a NON-owner in A's family whose membership is REMOVED, deliberately
+#          and permanently. It is the fixture for the removed-member regression
+#          test, and it must be left in that state.
+# Per run it writes one invite (revoked before exit) and one evergreen_metrics
+# row. It never touches the real family.
+#
+# REQUIRED SECRETS
+#   PROBE_A_EMAIL / PROBE_A_PASSWORD
+#   PROBE_B_EMAIL / PROBE_B_PASSWORD
+#   PROBE_C_EMAIL / PROBE_C_PASSWORD
+#   SUPABASE_DB_URL   — session pooler URL, for the policy and function checks,
+#                       which read pg_policies and pg_proc and so cannot run
+#                       through PostgREST.
+name: security
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'scripts/rls-attack-suite.mjs'
+      - 'scripts/rpc-lifecycle-smoke.mjs'
+      - 'scripts/verify-policies.mjs'
+      - '.github/workflows/security.yml'
+  # Weekly, because the database can drift without a commit. Every bug this
+  # suite has found was introduced by a change made outside this repository.
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Policies and functions match the migrations
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: node scripts/verify-policies.mjs
+
+      - name: The family RPCs work on the real path
+        env:
+          PROBE_A_EMAIL: ${{ secrets.PROBE_A_EMAIL }}
+          PROBE_A_PASSWORD: ${{ secrets.PROBE_A_PASSWORD }}
+        run: node scripts/rpc-lifecycle-smoke.mjs
+
+      - name: One family cannot reach another's health data
+        env:
+          PROBE_A_EMAIL: ${{ secrets.PROBE_A_EMAIL }}
+          PROBE_A_PASSWORD: ${{ secrets.PROBE_A_PASSWORD }}
+          PROBE_B_EMAIL: ${{ secrets.PROBE_B_EMAIL }}
+          PROBE_B_PASSWORD: ${{ secrets.PROBE_B_PASSWORD }}
+          PROBE_C_EMAIL: ${{ secrets.PROBE_C_EMAIL }}
+          PROBE_C_PASSWORD: ${{ secrets.PROBE_C_PASSWORD }}
+        run: node scripts/rls-attack-suite.mjs

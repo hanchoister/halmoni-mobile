@@ -65,6 +65,80 @@ const KNOWN_DIVERGENT = {
   family_members: ['members delete', 'members read', 'members update'],
 };
 
+// Run verbatim against production alongside POLICY_SQL. Policies alone cannot
+// catch the two worst bugs this project has had, because both lived inside
+// functions rather than in policy text.
+export const FUNCTION_SQL = `
+select coalesce(json_agg(json_build_object(
+  'name', p.proname, 'secdef', p.prosecdef,
+  'config', coalesce(array_to_string(p.proconfig, ','), ''),
+  'def', pg_get_functiondef(p.oid)
+) order by p.proname), '[]')
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public';
+`;
+
+// Functions that live in the `extensions` schema on Supabase. A function whose
+// search_path is pinned to 'public' cannot see them unqualified — which is
+// exactly how create_invite broke (migration 13).
+const EXTENSION_FUNCTIONS = [
+  'gen_random_bytes', 'crypt', 'gen_salt', 'digest', 'hmac',
+  'encrypt', 'decrypt', 'uuid_generate_v4', 'uuid_generate_v1',
+];
+
+// Membership predicates. Any function that decides "is this caller allowed to
+// see this family's rows" must exclude members whose membership has ended.
+const MEMBERSHIP_PREDICATES = ['is_family_member'];
+
+export function checkFunctions(functions) {
+  const problems = [];
+
+  for (const f of functions) {
+    const pinned = /search_path/.test(f.config);
+
+    // Class 1 — the migration 14 bug. A membership predicate that asks whether
+    // a row EXISTS rather than whether it is still live. This one silently gave
+    // removed members permanent read and write access to a family's health
+    // record, across all 26 tables at once, because every policy calls it.
+    if (MEMBERSHIP_PREDICATES.includes(f.name) && !/deleted_at\s+is\s+null/i.test(f.def)) {
+      problems.push(
+        `${f.name}(): does not exclude members whose deleted_at is set. Every policy on every family-scoped table calls this, so a removed member keeps full access (migration 14).`,
+      );
+    }
+
+    // Class 2 — an unpinned search_path on a SECURITY DEFINER function lets the
+    // caller control name resolution inside a privileged body.
+    if (f.secdef && !pinned) {
+      problems.push(`${f.name}(): SECURITY DEFINER with no pinned search_path.`);
+    }
+
+    // Class 3 — the migration 13 bug. Pinning search_path is correct, and it
+    // silently broke every call to pgcrypto, because those functions live in
+    // the extensions schema. Invites stopped working for ten days and no test
+    // noticed, because nothing called the function on the real path.
+    if (pinned && !/extensions/.test(f.config)) {
+      for (const fn of EXTENSION_FUNCTIONS) {
+        const unqualified = new RegExp(`(^|[^.\\w])${fn}\\s*\\(`);
+        // Strip qualified uses first, so extensions.gen_random_bytes(...) is fine.
+        const body = f.def.replace(new RegExp(`\\bextensions\\.${fn}`, 'g'), '');
+        if (unqualified.test(body)) {
+          problems.push(
+            `${f.name}(): calls ${fn}() unqualified while search_path is pinned to '${f.config}'. ${fn} lives in the extensions schema, so this throws 42883 at runtime (migration 13).`,
+          );
+        }
+      }
+    }
+  }
+
+  for (const name of MEMBERSHIP_PREDICATES) {
+    if (!functions.some((f) => f.name === name)) {
+      problems.push(`${name}(): not found on the database at all.`);
+    }
+  }
+
+  return problems;
+}
+
 function findPsql() {
   const candidates = [
     process.env.PSQL,
@@ -149,14 +223,30 @@ export function checkPolicies(policies) {
   return { problems, notes };
 }
 
+function loadFunctions() {
+  const i = process.argv.indexOf('--functions-from-file');
+  if (i !== -1) return JSON.parse(readFileSync(process.argv[i + 1], 'utf8'));
+  if (process.argv.includes('--from-file')) return null; // offline policy-only run
+
+  const out = execFileSync(findPsql(), [process.env.SUPABASE_DB_URL, '-At', '-v', 'ON_ERROR_STOP=1', '-c', FUNCTION_SQL], {
+    encoding: 'utf8',
+  });
+  return JSON.parse(out.trim());
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const { problems, notes } = checkPolicies(loadPolicies());
+  const functions = loadFunctions();
+  const fnProblems = functions ? checkFunctions(functions) : [];
+  if (!functions) notes.push('function checks skipped: offline --from-file run without --functions-from-file.');
+
+  const all = [...problems, ...fnProblems];
   for (const n of notes) console.log(`note: ${n}`);
-  if (problems.length === 0) {
-    console.log('OK: production policies match the migrations.');
+  if (all.length === 0) {
+    console.log('OK: production policies match the migrations, and the function invariants hold.');
     process.exit(0);
   }
-  console.log(`\nFAIL: ${problems.length} policy problem(s)`);
-  for (const p of problems) console.log(`  - ${p}`);
+  console.log(`\nFAIL: ${all.length} problem(s)`);
+  for (const p of all) console.log(`  - ${p}`);
   process.exit(1);
 }

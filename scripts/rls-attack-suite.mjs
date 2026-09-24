@@ -202,43 +202,57 @@ async function main() {
     members.json?.length === 0 ? 'REPELLED' : 'LEAK', `${members.json?.length ?? '?'} row(s)`);
 
   // -- 4b. A removed member -------------------------------------------------
-  // is_family_member() asks whether a membership row exists, not whether it is
-  // still live, so soft-deleting a member revoked nothing until migration 14.
-  // Needs a third probe holding a NON-owner membership in A's family; skipped
-  // loudly rather than silently when it is absent.
+  // is_family_member() used to ask whether a membership row existed, never
+  // whether it was still live, so soft-deleting a member revoked nothing
+  // (fixed by migration 14; this is the regression test).
+  //
+  // Probe C is a PERMANENT FIXTURE: a non-owner member of probe A's family
+  // whose deleted_at is set, and which is left that way on purpose. The probes
+  // below therefore mutate nothing and can run on every build.
+  //
+  // The first version of this test did soft-delete C each run and restore it
+  // afterwards. The restore silently failed — a removed member can no longer
+  // SELECT their own row, and PostgREST resolves a PATCH's target rows through
+  // a SELECT, so the update matched nothing while returning 204. The suite then
+  // passed once and went inconclusive for ever after. A test that quietly stops
+  // testing is worse than no test, so the fixture is now static.
   if (process.env.PROBE_C_EMAIL && process.env.PROBE_C_PASSWORD) {
     const C = await signIn(process.env.PROBE_C_EMAIL, process.env.PROBE_C_PASSWORD);
-    const row = await rest(`family_members?user_id=eq.${C.userId}&select=id,family_id,deleted_at`, { token: C.token });
-    const membership = row.json?.find((r) => r.family_id === familyA);
-    if (!membership) {
-      record('removed', 'removed member retains access', 'INCONCLUSIVE', 'probe C is not in probe A\'s family');
-    } else {
-      const stamp = new Date().toISOString();
-      await rest(`family_members?id=eq.${membership.id}`, {
-        token: C.token, method: 'PATCH', body: { deleted_at: stamp },
-      });
 
+    // Confirm the fixture is genuinely in the removed state before trusting the
+    // result: if C's membership were live, these probes would pass for the
+    // wrong reason — C would simply be a normal member seeing normal data.
+    const visible = await rest('family_members?select=id', { token: C.token });
+    const fixtureIsRemoved = Array.isArray(visible.json) && visible.json.length === 0;
+
+    if (!fixtureIsRemoved) {
+      record('removed', 'fixture state', 'INCONCLUSIVE',
+        'probe C can still see a membership row — it is not in the removed state');
+    } else {
       const read = await rest('parents?select=name', { token: C.token });
       const rows = Array.isArray(read.json) ? read.json.length : 0;
       record('removed', 'read the family health record', rows > 0 ? 'LEAK' : 'REPELLED', `${rows} parent row(s)`);
 
+      const meds = await rest('medications?select=name', { token: C.token });
+      const medRows = Array.isArray(meds.json) ? meds.json.length : 0;
+      record('removed', 'read the medication list', medRows > 0 ? 'LEAK' : 'REPELLED', `${medRows} row(s)`);
+
       const write = await rest(`medications?family_id=eq.${familyA}`, {
-        token: C.token, method: 'PATCH', body: { updated_at: stamp }, prefer: 'return=representation',
+        token: C.token, method: 'PATCH', body: { updated_at: new Date().toISOString() }, prefer: 'return=representation',
       });
       const touched = Array.isArray(write.json) ? write.json.length : -1;
       record('removed', 'write to the family health record', touched > 0 ? 'LEAK' : 'REPELLED', `${touched} row(s) affected`);
 
-      // Restore, so a re-run starts from the same place.
-      await rest(`family_members?id=eq.${membership.id}`, {
+      // Migration 15 makes this an explicit database rule. Before it, the
+      // un-remove was blocked only as a side effect of losing SELECT
+      // visibility, which is a property of the client and not of the data.
+      const unremove = await rest(`family_members?user_id=eq.${C.userId}`, {
         token: C.token, method: 'PATCH', body: { deleted_at: null },
       });
-
-      // Noted, not fixed: "members update" is USING (user_id = auth.uid()) and
-      // does not consult is_family_member, so the restore above works even from
-      // the removed state — a removed member can un-remove themselves. Closing
-      // that needs a decision about who may remove whom, so it is a plan item
-      // rather than a migration.
-      record('removed', 'un-remove self (noted, not fixed)', 'OPEN-BY-DESIGN', 'members update ignores deleted_at');
+      const stillRemoved = await rest('family_members?select=id', { token: C.token });
+      const regained = Array.isArray(stillRemoved.json) && stillRemoved.json.length > 0;
+      record('removed', 'un-remove self', regained ? 'LEAK' : 'REPELLED',
+        `HTTP ${unremove.status}, membership ${regained ? 'RESTORED' : 'still removed'}`);
     }
   } else {
     record('removed', 'removed member retains access', 'INCONCLUSIVE', 'PROBE_C_* not set');
