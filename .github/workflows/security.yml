@@ -48,7 +48,12 @@ on:
   workflow_dispatch:
 
 jobs:
-  security:
+  # Split deliberately. The api job needs only the probe logins, which can read
+  # nothing but their own fake families. The db job needs a direct Postgres
+  # connection, which bypasses RLS completely — the exact thing this workflow
+  # exists to test — so it is kept separate, optional, and skipped outright when
+  # the secret is absent. Do NOT merge these two jobs to save a runner.
+  api:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,11 +62,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-
-      - name: Policies and functions match the migrations
-        env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: node scripts/verify-policies.mjs
 
       - name: The family RPCs work on the real path
         env:
@@ -78,3 +78,25 @@ jobs:
           PROBE_C_EMAIL: ${{ secrets.PROBE_C_EMAIL }}
           PROBE_C_PASSWORD: ${{ secrets.PROBE_C_PASSWORD }}
         run: node scripts/rls-attack-suite.mjs
+
+  # Optional, and shown as skipped until SUPABASE_DB_URL exists. Reading
+  # pg_policies and pg_proc needs a direct connection, and PostgREST cannot see
+  # either. Until then this check runs locally before a release instead.
+  #
+  # When you do add the secret, do NOT use the postgres superuser string: make
+  # a role that can read the catalogs and nothing else, so a workflow that can
+  # print its own secrets cannot also read a family's health data.
+  db:
+    if: ${{ secrets.SUPABASE_DB_URL != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Policies and functions match the migrations
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: node scripts/verify-policies.mjs
