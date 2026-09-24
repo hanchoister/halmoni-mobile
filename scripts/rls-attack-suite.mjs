@@ -201,6 +201,49 @@ async function main() {
   record('escalate', 'read another family\'s members',
     members.json?.length === 0 ? 'REPELLED' : 'LEAK', `${members.json?.length ?? '?'} row(s)`);
 
+  // -- 4b. A removed member -------------------------------------------------
+  // is_family_member() asks whether a membership row exists, not whether it is
+  // still live, so soft-deleting a member revoked nothing until migration 14.
+  // Needs a third probe holding a NON-owner membership in A's family; skipped
+  // loudly rather than silently when it is absent.
+  if (process.env.PROBE_C_EMAIL && process.env.PROBE_C_PASSWORD) {
+    const C = await signIn(process.env.PROBE_C_EMAIL, process.env.PROBE_C_PASSWORD);
+    const row = await rest(`family_members?user_id=eq.${C.userId}&select=id,family_id,deleted_at`, { token: C.token });
+    const membership = row.json?.find((r) => r.family_id === familyA);
+    if (!membership) {
+      record('removed', 'removed member retains access', 'INCONCLUSIVE', 'probe C is not in probe A\'s family');
+    } else {
+      const stamp = new Date().toISOString();
+      await rest(`family_members?id=eq.${membership.id}`, {
+        token: C.token, method: 'PATCH', body: { deleted_at: stamp },
+      });
+
+      const read = await rest('parents?select=name', { token: C.token });
+      const rows = Array.isArray(read.json) ? read.json.length : 0;
+      record('removed', 'read the family health record', rows > 0 ? 'LEAK' : 'REPELLED', `${rows} parent row(s)`);
+
+      const write = await rest(`medications?family_id=eq.${familyA}`, {
+        token: C.token, method: 'PATCH', body: { updated_at: stamp }, prefer: 'return=representation',
+      });
+      const touched = Array.isArray(write.json) ? write.json.length : -1;
+      record('removed', 'write to the family health record', touched > 0 ? 'LEAK' : 'REPELLED', `${touched} row(s) affected`);
+
+      // Restore, so a re-run starts from the same place.
+      await rest(`family_members?id=eq.${membership.id}`, {
+        token: C.token, method: 'PATCH', body: { deleted_at: null },
+      });
+
+      // Noted, not fixed: "members update" is USING (user_id = auth.uid()) and
+      // does not consult is_family_member, so the restore above works even from
+      // the removed state — a removed member can un-remove themselves. Closing
+      // that needs a decision about who may remove whom, so it is a plan item
+      // rather than a migration.
+      record('removed', 'un-remove self (noted, not fixed)', 'OPEN-BY-DESIGN', 'members update ignores deleted_at');
+    }
+  } else {
+    record('removed', 'removed member retains access', 'INCONCLUSIVE', 'PROBE_C_* not set');
+  }
+
   // A tries to file a terms acceptance in B's name. The policy checks
   // user_id = auth.uid(), so this should be refused outright.
   const terms = await rest('terms_acceptances', {
