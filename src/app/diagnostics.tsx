@@ -11,6 +11,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Card } from '@/components/ui/card';
 import { Screen } from '@/components/ui/screen';
 import { getDb } from '@/lib/db/client';
+import { deviceZone, zoneSupported } from '@/lib/dose-plan';
 import { useDemoMode } from '@/lib/demo-mode';
 import { useSyncStatus } from '@/lib/sync/state';
 import { palette, spacing } from '@/lib/theme';
@@ -115,6 +116,23 @@ export default function DiagnosticsScreen() {
         ) : (
           <Row label="Write queue" value="Reading…" />
         )}
+      </Card>
+
+      <Card>
+        <Text style={styles.sectionLabel}>TIME</Text>
+        {/*
+          G2-27 stores the zone a medication's times are written in and honours
+          it on every device. All of that rests on this runtime being able to
+          resolve an IANA zone, and Hermes' Intl support is not a given — if it
+          cannot, every schedule silently falls back to reader-local times,
+          which is the bug. Node can do it, so CI will never tell us. This row
+          is how the device pass (G2-56) answers it in one glance.
+        */}
+        <Row label="Device timezone" value={deviceZone() ?? 'unavailable'} />
+        <Row
+          label="Zone support"
+          value={zoneSupported('America/New_York') ? 'yes — dose times are zone-correct' : 'NO — dose times fall back to this device'}
+        />
       </Card>
 
       <Card>
