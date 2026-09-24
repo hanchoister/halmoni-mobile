@@ -86,9 +86,13 @@ jobs:
   # When you do add the secret, do NOT use the postgres superuser string: make
   # a role that can read the catalogs and nothing else, so a workflow that can
   # print its own secrets cannot also read a family's health data.
+  # The guard is on the STEP, not the job: the `secrets` context is not
+  # available in a job-level `if:`, and using it there is not a skipped job but
+  # an invalid workflow file — which is how this failed on its first two pushes.
   db:
-    if: ${{ secrets.SUPABASE_DB_URL != '' }}
     runs-on: ubuntu-latest
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -97,6 +101,11 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Policies and functions match the migrations
-        env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        if: env.SUPABASE_DB_URL != ''
         run: node scripts/verify-policies.mjs
+      - name: Say plainly that the catalog check did not run
+        if: env.SUPABASE_DB_URL == ''
+        run: |
+          echo "::notice::Policy and function checks skipped — SUPABASE_DB_URL is not set (G2-53)."
+          echo "This is the one check that needs a direct Postgres connection. It runs"
+          echo "locally before a release until a read-only catalog role exists."
