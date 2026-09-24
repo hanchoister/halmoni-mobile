@@ -47,6 +47,7 @@
       "expo-web-browser",
       "expo-font",
       "expo-sqlite",
+      "expo-notifications",
       [
         "expo-local-authentication",
         {
@@ -63,7 +64,8 @@
       ],
       "expo-image",
       "expo-sharing",
-      "expo-status-bar"
+      "expo-status-bar",
+      "./plugins/withExcludeSqliteFromBackup.js"
     ],
     "experiments": {
       "typedRoutes": true,

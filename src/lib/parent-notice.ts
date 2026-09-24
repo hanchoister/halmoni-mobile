@@ -14,7 +14,7 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
-import { CONSENT_BASIS_COPY, CONSENT_NOTICE_VERSION, NOTICE_ARCHIVE } from '@/lib/consent';
+import { attestationCopyForVersion, CONSENT_NOTICE_VERSION, NOTICE_ARCHIVE } from '@/lib/consent';
 import type { ConsentBasis } from '@/lib/consent';
 
 export type NoticeDetails = {
@@ -40,7 +40,9 @@ export function buildNoticeHtml(d: NoticeDetails): string {
   const version = d.version ?? CONSENT_NOTICE_VERSION;
   const notice = NOTICE_ARCHIVE[version] ?? NOTICE_ARCHIVE[CONSENT_NOTICE_VERSION];
   const who = d.contactName?.trim();
-  const basisLine = CONSENT_BASIS_COPY[d.basis].noticeLine;
+  // Version-matched (G2-44): a reprint of an old notice must show the exact
+  // basis line that version shipped with, not today's wording.
+  const basisLine = attestationCopyForVersion(version, d.basis).noticeLine;
 
   return `<!doctype html>
 <html>

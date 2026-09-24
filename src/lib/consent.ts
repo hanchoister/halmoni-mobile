@@ -130,11 +130,85 @@ export const NO_AUTHORITY_ACKNOWLEDGEMENT =
 
 /**
  * Bump this whenever the wording above or the notice text below changes, and
- * leave the old entry in NOTICE_ARCHIVE. What a user agreed to is only
- * meaningful if you can still produce the exact words they were shown, and the
- * version stored on the row is the pointer back to them.
+ * leave the old entry in NOTICE_ARCHIVE (and ATTESTATION_ARCHIVE below). What a
+ * user agreed to is only meaningful if you can still produce the exact words
+ * they were shown, and the version stored on the row is the pointer back to
+ * them.
  */
 export const CONSENT_NOTICE_VERSION = '2026-09-11';
+
+/**
+ * Snapshot of CONSENT_BASIS_COPY's attestation/sharing/noticeLine text, one
+ * entry per notice version (G2-44).
+ *
+ * CONSENT_NOTICE_VERSION is stored on every attested parent row and was meant
+ * to let the exact words a family agreed to be reproduced later — but until
+ * this existed, that pointer only reached the notice paragraphs in
+ * NOTICE_ARCHIVE. The attestation sentence itself (CONSENT_BASIS_COPY) and the
+ * one-line summary printed on the notice (noticeLine) were read live, so
+ * editing that wording silently changed what every past attestation is shown
+ * to mean, while the version column kept claiming the record was intact.
+ *
+ * Never edit an entry here in place once it has shipped — add a new one and
+ * bump CONSENT_NOTICE_VERSION, the same discipline NOTICE_ARCHIVE already
+ * follows. scripts/verify-consent.js checks that the current version's entry
+ * here still matches CONSENT_BASIS_COPY word for word, so an in-place edit
+ * fails the build instead of silently reinterpreting old attestations.
+ */
+export const ATTESTATION_ARCHIVE: Record<
+  string,
+  Record<ConsentBasis, { attestation: string; sharing: string; noticeLine: string }>
+> = {
+  '2026-09-11': {
+    parent_agreed: {
+      attestation:
+        'I have shown or read them the notice above, and they agreed to Halmoni holding their health information.',
+      sharing: 'They also agreed that everyone invited into this care circle can see it.',
+      noticeLine: 'They told us you agreed to this.',
+    },
+    healthcare_proxy: {
+      attestation:
+        'I am the health care agent or proxy named in their advance directive, and it has taken effect because they can no longer make these decisions themselves.',
+      sharing:
+        'As their health care agent, I am deciding that everyone invited into this care circle can see it.',
+      noticeLine: 'They are acting as your named health care agent.',
+    },
+    power_of_attorney: {
+      attestation:
+        'I hold a power of attorney that covers their health care or their health information. (In New York, health care decisions need a health care proxy instead — choose that option above.)',
+      sharing:
+        'Under that authority, I am deciding that everyone invited into this care circle can see it.',
+      noticeLine: 'They are acting under a power of attorney you granted.',
+    },
+    guardianship: {
+      attestation:
+        'I am their court-appointed guardian or conservator of the person, with authority over their care. (A conservator only of their money or property is not this.)',
+      sharing:
+        'Under that authority, I am deciding that everyone invited into this care circle can see it.',
+      noticeLine: 'They are acting as your court-appointed guardian.',
+    },
+    no_formal_authority: {
+      attestation:
+        'They can no longer make this decision themselves, nobody holds a proxy, power of attorney or guardianship, and I am the family member managing their care in what I believe to be their best interest.',
+      sharing: 'On the same basis, I am deciding that everyone invited into this care circle can see it.',
+      noticeLine: 'They are the family member managing your care.',
+    },
+  },
+};
+
+/**
+ * The attestation/sharing/noticeLine text for a given notice version and
+ * basis. Falls back to the current version if the requested one was never
+ * archived (should not happen for any version actually stored on a row, but
+ * a fallback beats a crash when printing a notice).
+ */
+export function attestationCopyForVersion(
+  version: string | null | undefined,
+  basis: ConsentBasis,
+): { attestation: string; sharing: string; noticeLine: string } {
+  const archived = ATTESTATION_ARCHIVE[version ?? ''] ?? ATTESTATION_ARCHIVE[CONSENT_NOTICE_VERSION];
+  return archived[basis];
+}
 
 /**
  * Every version of the notice, kept forever. Never edit an entry in place —
@@ -295,7 +369,14 @@ export function isAttestationStale(
   return age !== null && age > maxDays;
 }
 
-/** One line for the profile screen: what was attested, and when. */
+/**
+ * One line for the profile screen: what was attested, and when.
+ *
+ * Reads the attestation text through attestationCopyForVersion (G2-44) rather
+ * than live off CONSENT_BASIS_COPY, so an old attestation still describes
+ * itself in the words the family actually saw, even after the current
+ * wording moves on.
+ */
 export function describeConsent(row: MaybeConsent): string | null {
   if (!isConsentBasis(row.consent_basis) || !row.consent_attested_at) return null;
   const when = new Date(row.consent_attested_at);
@@ -306,5 +387,6 @@ export function describeConsent(row: MaybeConsent): string | null {
         month: 'short',
         day: 'numeric',
       });
-  return `${CONSENT_BASIS_COPY[row.consent_basis].attestation}${date ? ` Recorded ${date}.` : ''}`;
+  const { attestation } = attestationCopyForVersion(row.consent_notice_version, row.consent_basis);
+  return `${attestation}${date ? ` Recorded ${date}.` : ''}`;
 }

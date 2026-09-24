@@ -240,6 +240,17 @@ export const CREATE_TABLE_SQL: string[] = [
     seen_at      TEXT NOT NULL,
     PRIMARY KEY (table_name, row_id)
   )`,
+
+  // Which hand-offs this device has already announced with a local
+  // notification (G2-09). Deliberately not in SYNCABLE_TABLES or
+  // REBUILDABLE_TABLES: it is per-device bookkeeping, not a mirror of
+  // anything on the server, and it should survive a schema-version wipe so a
+  // routine schema bump does not replay the family's whole hand-off history
+  // as fresh notifications.
+  `CREATE TABLE IF NOT EXISTS notified_handoffs (
+    id           TEXT PRIMARY KEY,
+    notified_at  TEXT NOT NULL
+  )`,
 ];
 
 // Column allow-list per table, derived from the CREATE TABLE statements above

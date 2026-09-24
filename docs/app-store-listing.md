@@ -4,6 +4,12 @@ Drafted 2026-09-13. **Nothing here has been entered in App Store Connect** — t
 on the outside-business-activity approval (plan `G0-09`). Tracked as plan `G2-49`
 (copy) and `G2-50` (screenshots).
 
+**Updated 2026-09-23: `G2-09` (local notifications) shipped, so the description now
+names reminders — see "What this copy deliberately does not say" below for exactly
+what changed and why.** Re-verify the "does not say" list before entering this in
+App Store Connect; it is the thing standing between this copy and a Guideline 2.3
+rejection.
+
 Re-read every line against the build you actually submit. Guideline 2.3 rejects
 metadata that describes features the app doesn't have.
 
@@ -15,7 +21,7 @@ metadata that describes features the app doesn't have.
 | Subtitle | 29 / 30 |
 | Promotional text | 145 / 170 |
 | Keywords | 98 / 100 |
-| Description | 1987 / 4000 |
+| Description | 2249 / 4000 |
 
 ## Name
 ```
@@ -69,6 +75,9 @@ Messages about your parent, tagged with who wrote them, alongside the record the
 THE CARE KIT
 One tap makes a PDF of the essentials — allergies, conditions, current medications, emergency contacts, doctor, pharmacy and insurance — to send a sibling, a neighbour or an ER nurse.
 
+A NUDGE WHEN IT'S DUE
+A notification when a dose is due, and a gentle check-in half an hour later if it hasn't been logged yet. A heads-up before a refill runs out, and when someone hands off to you.
+
 BUILT FOR REAL LIFE
 Works without a signal and syncs when you're back. Lock the app with Face ID. Your parent doesn't need an account or the app.
 
@@ -80,7 +89,14 @@ Halmoni is a coordination and record-keeping tool. It does not give medical advi
 
 ## What this copy deliberately does not say
 
-- **No reminders or notifications.** Not built yet (plan `G2-09`). Add a line only once it ships.
+- **Reminders, but not the promise of always-on push.** `G2-09` ships local notifications
+  scheduled by the app on-device — dose due, unlogged after 30 minutes, refill at 7 and 2 days
+  out, and a hand-off received. It does NOT ship server-sent push (`P-10`, explicitly deferred).
+  The practical difference the copy must not paper over: a local notification only fires from
+  a schedule this device already computed, so it depends on the app having synced recently
+  enough to know the schedule, and it will not tell one sibling about something a different
+  sibling's phone did in real time the way push would. "A nudge when it's due" is true and
+  does not overclaim; do not upgrade it to language implying real-time alerts across the family.
 - **No share link or passphrase.** Removed 2026-09-12 (plan `G1-31`); the Care Kit PDF is the only share path.
 - **No assessment of symptoms at all.** Reframed 2026-09-13: the app no longer matches symptoms
   against a side-effect list or sorts them by urgency. It reports what was logged and when, and

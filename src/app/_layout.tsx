@@ -22,12 +22,14 @@ import { enableDemoMode, isDemoMode, useDemoMode } from '@/lib/demo-mode';
 import { purgeDemoResidue, seedDemoDataIntoDb } from '@/lib/demo-seed';
 import { FamilyProvider, useFamily } from '@/lib/family';
 import { MeProvider, useMe } from '@/lib/me';
+import { syncDoseAndRefillNotifications, syncHandoffNotifications } from '@/lib/notifications';
 import { ParentProvider } from '@/lib/parent';
 import { beatPresence } from '@/lib/presence';
 import { ErrorBoundary } from '@/lib/reliability/error-boundary';
 import { initSentry } from '@/lib/reliability/sentry';
 import { BiometricLockGate } from '@/lib/security/lock-gate';
 import { SyncProvider } from '@/lib/sync';
+import { useSyncStatus } from '@/lib/sync/state';
 import { startRealtime, stopRealtime } from '@/lib/sync/realtime';
 import { palette } from '@/lib/theme';
 
@@ -107,6 +109,23 @@ function PresenceHeartbeat() {
   return null;
 }
 
+// Reschedules dose/refill reminders and announces new hand-offs after every
+// clean sync (G2-09). Lives beside PresenceHeartbeat because it needs the
+// same two things: a signed-in family member (useMe) and to know when the
+// local mirror last changed (useSyncStatus). No-ops in demo mode inside the
+// notifications module itself, and MaybeSyncProvider means useSyncStatus's
+// lastSyncAt never changes in demo mode anyway.
+function NotificationSync() {
+  const { me } = useMe();
+  const { status, lastSyncAt } = useSyncStatus();
+  useEffect(() => {
+    if (status !== 'synced' || !lastSyncAt) return;
+    void syncDoseAndRefillNotifications();
+    void syncHandoffNotifications(me?.id ?? null);
+  }, [status, lastSyncAt, me?.id]);
+  return null;
+}
+
 function FamilyGate() {
   const { familyId, loading } = useFamily();
 
@@ -123,6 +142,7 @@ function FamilyGate() {
     <ParentProvider>
       <MeProvider>
         <PresenceHeartbeat />
+        <NotificationSync />
         <AppStack />
       </MeProvider>
     </ParentProvider>

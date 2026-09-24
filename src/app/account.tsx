@@ -1,6 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
+import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Modal, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Modal, StyleSheet, Text, View } from 'react-native';
 
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ import { useAuth } from '@/lib/auth';
 import { useFamily } from '@/lib/family';
 import { useMe } from '@/lib/me';
 import { supabase } from '@/lib/supabase';
+import { PRIVACY_URL, TERMS_URL } from '@/lib/terms';
 import { palette, spacing } from '@/lib/theme';
 import { signOutEverywhere } from '@/lib/sign-out';
 
@@ -144,6 +146,21 @@ export default function AccountScreen() {
       </Card>
 
       <Card>
+        <Text style={styles.sectionLabel}>LEGAL</Text>
+        <Text style={styles.sub}>Review what Halmoni does with your family&apos;s data.</Text>
+        <View style={{ height: spacing.sm }} />
+        <View style={styles.legalRow}>
+          <Text style={styles.legalLink} onPress={() => Linking.openURL(PRIVACY_URL)}>
+            Privacy Policy
+          </Text>
+          <Text style={styles.legalDot}>·</Text>
+          <Text style={styles.legalLink} onPress={() => Linking.openURL(TERMS_URL)}>
+            Terms
+          </Text>
+        </View>
+      </Card>
+
+      <Card>
         <Text style={styles.sectionLabel}>SIGN OUT</Text>
         <Text style={styles.sub}>You&apos;ll be returned to the sign-in screen.</Text>
         <View style={{ height: spacing.sm }} />
@@ -163,6 +180,12 @@ export default function AccountScreen() {
           onPress={resetLocalData}
           variant="secondary"
           busy={busy}
+        />
+        <View style={{ height: spacing.sm }} />
+        <Button
+          title="Diagnostics"
+          onPress={() => router.push('/diagnostics')}
+          variant="ghost"
         />
       </Card>
 
@@ -247,6 +270,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   meRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  legalRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  legalLink: { fontSize: 13, color: '#208AEF', fontWeight: '600' },
+  legalDot: { fontSize: 13, color: palette.ink500 },
   name: { fontSize: 16, fontWeight: '700', color: palette.ink900 },
   sub: { fontSize: 13, color: palette.ink500, marginTop: 2 },
   permanent: { fontWeight: '700', color: palette.terracotta500 },

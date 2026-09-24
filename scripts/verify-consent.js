@@ -157,6 +157,54 @@ if (!versionMatch) {
   );
 }
 
+// --- layer 3b: the attestation wording itself must be archived too (G2-44) --
+// CONSENT_NOTICE_VERSION covers NOTICE_ARCHIVE (the printed notice) but not,
+// until this check existed, the attestation sentence the user actually agreed
+// to or the one-line summary printed alongside it — those were read live off
+// CONSENT_BASIS_COPY, so editing that wording silently changed what every past
+// attestation is shown to mean while the stored version pointer kept claiming
+// nothing had changed. This requires ATTESTATION_ARCHIVE's entry for the
+// current version to match CONSENT_BASIS_COPY word for word: an in-place edit
+// to CONSENT_BASIS_COPY without a matching new ATTESTATION_ARCHIVE entry (and
+// a version bump) fails here instead of shipping silently.
+if (versionMatch) {
+  const archiveBlockMatch = new RegExp(
+    `'${versionMatch[1]}':\\s*\\{([\\s\\S]*?)\\n  \\},\\n\\};`,
+  ).exec(ts.slice(ts.indexOf('export const ATTESTATION_ARCHIVE')));
+  if (!archiveBlockMatch) {
+    fail(
+      `CONSENT_NOTICE_VERSION is '${versionMatch[1]}' but ATTESTATION_ARCHIVE has no entry for it — ` +
+        'the attestation sentence a user agreed to could not be reproduced later',
+    );
+  } else {
+    for (const b of tsBases) {
+      const liveEntry = new RegExp(`\\b${b}:\\s*\\{([\\s\\S]*?)\\n  \\},`).exec(ts);
+      const archivedEntry = new RegExp(`\\b${b}:\\s*\\{([\\s\\S]*?)\\n    \\},`).exec(
+        archiveBlockMatch[1],
+      );
+      if (!liveEntry || !archivedEntry) continue; // already reported above
+      for (const key of ['attestation', 'sharing', 'noticeLine']) {
+        const liveVal = new RegExp(`${key}:\\s*(?:'([^']*)'|"([^"]*)"|((?:'[^']*'\\s*\\+?\\s*)+))`).exec(
+          liveEntry[1],
+        );
+        const archivedVal = new RegExp(
+          `${key}:\\s*(?:'([^']*)'|"([^"]*)"|((?:'[^']*'\\s*\\+?\\s*)+))`,
+        ).exec(archivedEntry[1]);
+        const liveText = liveVal ? (liveVal[1] ?? liveVal[2] ?? liveVal[3]) : undefined;
+        const archivedText = archivedVal ? (archivedVal[1] ?? archivedVal[2] ?? archivedVal[3]) : undefined;
+        if (liveText === undefined || archivedText === undefined) {
+          fail(`could not compare CONSENT_BASIS_COPY.${b}.${key} against its ATTESTATION_ARCHIVE entry`);
+        } else if (liveText !== archivedText) {
+          fail(
+            `CONSENT_BASIS_COPY.${b}.${key} no longer matches ATTESTATION_ARCHIVE['${versionMatch[1]}'].${b}.${key} — ` +
+              'wording changed without a version bump, so a past attestation would be described in words the user was never shown',
+          );
+        }
+      }
+    }
+  }
+}
+
 // --- layer 4: the client write path -----------------------------------------
 const wp = read(WRITE_PATH);
 if (!/validateConsent/.test(wp) || !/guardParentConsent/.test(wp)) {
