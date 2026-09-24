@@ -36,6 +36,7 @@ import { shareParentNotice } from '@/lib/parent-notice';
 import { writeRow } from '@/lib/sync/write-path';
 import { color, palette, radius, spacing, typography } from '@/lib/theme';
 import { validateDob } from '@/lib/validate-dob';
+import { parseHumanDate } from '@/lib/parse-human';
 
 type Step = 'permission' | 'details';
 
@@ -100,7 +101,14 @@ export default function AddParentScreen() {
       );
       return;
     }
-    const dobError = validateDob(dob);
+    // A birthday written the way it has been written for seventy years —
+    // 3/14/1950 — is normalised before validation rather than rejected (G2-29).
+    const dobNormalised = dob.trim() ? parseHumanDate(dob) : '';
+    if (dob.trim() && !dobNormalised) {
+      Alert.alert('Could not read that date', 'Try 3/14/1950, March 14 1950, or 1950-03-14.');
+      return;
+    }
+    const dobError = validateDob(dobNormalised ?? '');
     if (dobError) {
       Alert.alert('Check the date of birth', dobError);
       return;
@@ -112,7 +120,7 @@ export default function AddParentScreen() {
         family_id: familyId,
         name: name.trim(),
         nickname: nickname.trim() || name.trim(),
-        dob: dob.trim() || null,
+        dob: dobNormalised || null,
         blood_type: bloodType.trim() || null,
         conditions,
         allergies,
@@ -242,7 +250,7 @@ export default function AddParentScreen() {
       <View style={styles.row}>
         <View style={{ flex: 1 }}>
           <Field label="Date of birth">
-            <Input value={dob} onChangeText={setDob} placeholder="YYYY-MM-DD" />
+            <Input value={dob} onChangeText={setDob} placeholder="3/14/1950" />
           </Field>
         </View>
         <View style={{ flex: 1 }}>

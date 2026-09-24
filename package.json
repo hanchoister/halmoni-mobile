@@ -63,7 +63,7 @@
     "verify:rls": "node scripts/rls-attack-suite.mjs",
     "verify:rpc": "node scripts/rpc-lifecycle-smoke.mjs",
     "verify": "tsc --noEmit && expo lint && npm run verify:contracts && npm run verify:consent && npm run verify:doses && npm run verify:logic && npm run verify:scrub",
-    "verify:logic": "tsc src/lib/validate-dob.ts src/lib/consent.ts src/lib/terms.ts src/lib/sync/ids.ts src/lib/dose-plan.ts src/lib/reliability/sentry-scrub.ts --ignoreConfig --outDir .verify-build --module commonjs --target es2020 --skipLibCheck && node scripts/verify-logic.js .verify-build",
+    "verify:logic": "tsc src/lib/validate-dob.ts src/lib/consent.ts src/lib/terms.ts src/lib/sync/ids.ts src/lib/dose-plan.ts src/lib/parse-human.ts src/lib/reliability/sentry-scrub.ts --ignoreConfig --outDir .verify-build --module commonjs --target es2020 --skipLibCheck && node scripts/verify-logic.js .verify-build",
     "verify:contracts": "node scripts/verify-contracts.js",
     "verify:consent": "node scripts/verify-consent.js",
     "verify:doses": "node scripts/verify-doses.js"

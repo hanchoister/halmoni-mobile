@@ -547,5 +547,89 @@ console.log('\ndose timezones — the 08:00 pill a sibling saw at 05:00 (G2-27, 
   });
 }
 
+console.log('\nhuman dates and times — the field that demanded 20:30 (G2-29)');
+{
+  const { parseHumanDate, parseHumanTime } = load('parse-human.js');
+
+  const dates = {
+    '1950-03-14': '1950-03-14',
+    '3/14/1950': '1950-03-14',
+    '03/14/1950': '1950-03-14',
+    '03-14-1950': '1950-03-14',
+    '3.14.1950': '1950-03-14',
+    'March 14, 1950': '1950-03-14',
+    'march 14 1950': '1950-03-14',
+    'Mar 14 1950': '1950-03-14',
+    '14 March 1950': '1950-03-14',
+    'Sept 1 2026': '2026-09-01',
+    '2024-02-29': '2024-02-29',
+  };
+  for (const [input, want] of Object.entries(dates)) {
+    check(`date ${JSON.stringify(input)} -> ${want}`, () =>
+      assert.strictEqual(parseHumanDate(input), want));
+  }
+
+  // A number that cannot be a month means the writer used day-first. Reading it
+  // as US order anyway would put the date ten months out, silently.
+  check('14/3/1950 is read day-first rather than rejected', () =>
+    assert.strictEqual(parseHumanDate('14/3/1950'), '1950-03-14'));
+
+  // Refused on purpose, not by accident.
+  const badDates = ['3/14/50', '14/3/50', '3/14', 'March 1950', 'yesterday', '2026-02-31', '13/13/1950', '', '   '];
+  for (const input of badDates) {
+    check(`date ${JSON.stringify(input)} is refused`, () =>
+      assert.strictEqual(parseHumanDate(input), null));
+  }
+
+  const times = {
+    '08:00': '08:00',
+    '8:00': '08:00',
+    '8': '08:00',
+    '20:30': '20:30',
+    '8am': '08:00',
+    '8 AM': '08:00',
+    '8:30pm': '20:30',
+    '8.30 pm': '20:30',
+    '12am': '00:00',
+    '12pm': '12:00',
+    '12:15am': '00:15',
+    'noon': '12:00',
+    'midnight': '00:00',
+  };
+  for (const [input, want] of Object.entries(times)) {
+    check(`time ${JSON.stringify(input)} -> ${want}`, () =>
+      assert.strictEqual(parseHumanTime(input), want));
+  }
+
+  // The separator is optional in the pattern, so the military form is read by
+  // the same function. An earlier version of this file had a second parser for
+  // it and a test asserting the first one could not — both were wrong.
+  check('the military form is read by the same parser', () => {
+    assert.strictEqual(parseHumanTime('0800'), '08:00');
+    assert.strictEqual(parseHumanTime('2030'), '20:30');
+    assert.strictEqual(parseHumanTime('830'), '08:30');
+  });
+
+  const badTimes = ['25:00', '8:99', '13pm', '0pm', 'half eight', 'breakfast', '', '  '];
+  for (const input of badTimes) {
+    check(`time ${JSON.stringify(input)} is refused`, () =>
+      assert.strictEqual(parseHumanTime(input), null));
+  }
+
+  // Whatever comes out must be exactly what the storage format and the dose
+  // planner's own slot regex expect, or the fix moves the failure instead of
+  // removing it.
+  check('every accepted time matches the slot format the planner requires', () => {
+    for (const input of Object.keys(times)) {
+      assert.match(parseHumanTime(input), /^([01]\d|2[0-3]):[0-5]\d$/, input);
+    }
+  });
+  check('every accepted date matches the stored YYYY-MM-DD format', () => {
+    for (const input of Object.keys(dates)) {
+      assert.match(parseHumanDate(input), /^\d{4}-\d{2}-\d{2}$/, input);
+    }
+  });
+}
+
 console.log(failures === 0 ? '\nPASS: all logic checks' : `\nFAIL: ${failures} check(s)`);
 process.exit(failures === 0 ? 0 : 1);

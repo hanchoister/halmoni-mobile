@@ -10,6 +10,7 @@ import { rescheduleDoses } from '@/lib/dose-maintenance';
 import { writeRow } from '@/lib/sync/write-path';
 import { palette, radius, spacing } from '@/lib/theme';
 import { deviceZone } from '@/lib/dose-plan';
+import { parseHumanDate, parseHumanTime } from '@/lib/parse-human';
 
 type Schedule = { time: string; withFood?: boolean };
 
@@ -56,9 +57,11 @@ export default function EditMedicationScreen() {
   }, [id]);
 
   function addTime() {
-    const v = timeInput.trim();
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(v)) {
-      Alert.alert('Bad time', 'Use 24-hour HH:MM, e.g. 08:00 or 20:30.');
+    // Read it the way it was typed — "8am", "8:30pm", "0800" — and store the
+    // 24-hour form the dose planner needs (G2-29).
+    const v = parseHumanTime(timeInput);
+    if (!v) {
+      Alert.alert('Could not read that time', 'Try 8am, 8:30pm, or 20:30.');
       return;
     }
     if (times.includes(v)) {
@@ -71,8 +74,9 @@ export default function EditMedicationScreen() {
 
   async function save() {
     if (!id || !row || !name.trim() || times.length === 0) return;
-    if (refillBy.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(refillBy.trim())) {
-      Alert.alert('Bad refill date', 'Use YYYY-MM-DD or leave blank.');
+    const refillNormalised = refillBy.trim() ? parseHumanDate(refillBy) : '';
+    if (refillBy.trim() && !refillNormalised) {
+      Alert.alert('Could not read that date', 'Try 3/14/2026, March 14 2026, or leave it blank.');
       return;
     }
     setSaving(true);
@@ -93,7 +97,7 @@ export default function EditMedicationScreen() {
         schedule,
         prescriber: prescriber.trim() || null,
         pharmacy: pharmacy.trim() || null,
-        refill_by: refillBy.trim() || null,
+        refill_by: refillNormalised || null,
         pills_left: pillsLeft ? parseInt(pillsLeft, 10) : null,
         notes: notes.trim() || null,
       });
@@ -192,7 +196,7 @@ export default function EditMedicationScreen() {
       <View style={styles.row}>
         <View style={{ flex: 1 }}>
           <Field label="Refill by">
-            <Input value={refillBy} onChangeText={setRefillBy} placeholder="YYYY-MM-DD" />
+            <Input value={refillBy} onChangeText={setRefillBy} placeholder="3/14/2026" />
           </Field>
         </View>
         <View style={{ flex: 1 }}>

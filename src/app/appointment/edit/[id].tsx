@@ -8,6 +8,7 @@ import { Screen } from '@/components/ui/screen';
 import { getById } from '@/lib/db/repository';
 import { writeRow } from '@/lib/sync/write-path';
 import { palette, spacing } from '@/lib/theme';
+import { parseHumanDate, parseHumanTime } from '@/lib/parse-human';
 
 function pad(n: number) {
   return String(n).padStart(2, '0');
@@ -50,16 +51,17 @@ export default function EditAppointmentScreen() {
 
   async function save() {
     if (!id || !row || !providerName.trim() || !date.trim()) return;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
-      Alert.alert('Bad date', 'Use YYYY-MM-DD.');
+    const day = parseHumanDate(date);
+    if (!day) {
+      Alert.alert('Could not read that date', 'Try 3/14/2026, March 14 2026, or 2026-03-14.');
       return;
     }
-    const t = (time || '09:00').trim();
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(t)) {
-      Alert.alert('Bad time', 'Use 24-hour HH:MM.');
+    const t = parseHumanTime(time || '09:00');
+    if (!t) {
+      Alert.alert('Could not read that time', 'Try 9am, 2:30pm, or 14:30.');
       return;
     }
-    const parsed = new Date(`${date.trim()}T${t}`);
+    const parsed = new Date(`${day}T${t}`);
     if (Number.isNaN(parsed.getTime())) {
       Alert.alert('Bad date/time', 'Please double-check the date.');
       return;
@@ -115,7 +117,7 @@ export default function EditAppointmentScreen() {
       <View style={styles.row}>
         <View style={{ flex: 1 }}>
           <Field label="Date" required>
-            <Input value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
+            <Input value={date} onChangeText={setDate} placeholder="3/14/2026" />
           </Field>
         </View>
         <View style={{ flex: 1 }}>
