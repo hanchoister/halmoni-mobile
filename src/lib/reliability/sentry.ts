@@ -42,6 +42,53 @@ export function initSentry(): void {
 
     beforeSend: (event) => scrubEvent(event),
   });
+
+  reportTimezoneCapability();
+}
+
+/**
+ * Say out loud, once per launch, if this runtime cannot resolve IANA zones.
+ *
+ * G2-27 gave every medication schedule the zone its wall-clock times are
+ * written in, so an 08:00 dose entered in New York is 08:00 for a sibling in
+ * California. All of that rests on `Intl.DateTimeFormat` accepting a
+ * `timeZone`, and Hermes gets its zone data from the platform rather than from
+ * JavaScript, so this is a property of the device and not of the code.
+ *
+ * The fallback is deliberately safe — an unresolvable zone reverts to the
+ * reader's own clock rather than throwing. But that fallback IS the original
+ * bug: doses quietly an hour or three out, on a medication reminder, with
+ * nothing on fire. Node resolves zones perfectly, so the test suite and CI can
+ * never catch it; only a real device can, and only if it tells someone.
+ *
+ * Hence a message rather than a silent degrade. It carries a zone name and a
+ * boolean — no health data, nothing about a family — so it is safe under the
+ * same rule as everything else in this file: the shape of the failure, never
+ * its contents.
+ */
+function reportTimezoneCapability(): void {
+  let resolves = false;
+  let deviceZone = 'unknown';
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York' }).format(new Date(0));
+    resolves = true;
+    deviceZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'unknown';
+  } catch {
+    resolves = false;
+  }
+
+  if (resolves) {
+    // Useful context on any other crash, and not worth an event of its own.
+    Sentry.setTag('tz.resolves', 'true');
+    Sentry.setTag('tz.device', deviceZone);
+    return;
+  }
+
+  Sentry.setTag('tz.resolves', 'false');
+  Sentry.captureMessage(
+    'Intl timezones unavailable: medication times fall back to this device\'s clock (G2-27)',
+    'warning',
+  );
 }
 
 /** Deliberate crash, for verifying what actually arrives (G1-07). */
