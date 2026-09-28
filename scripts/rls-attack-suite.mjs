@@ -196,6 +196,36 @@ async function main() {
     }
   }
 
+  // -- 4c. What a member may change about themselves (G2-52) ---------------
+  // "members update" is USING (user_id = auth.uid()) with no WITH CHECK, so the
+  // policy text constrains no column at all. Migration 18 adds an allow-list
+  // trigger. Both directions are tested on purpose: a trigger that refuses
+  // everything would pass a deny-only test while quietly breaking the app.
+  if (memberIdA) {
+    const moveHouse = await rest(`family_members?id=eq.${memberIdA}`, {
+      token: A.token, method: 'PATCH', body: { family_id: familyB },
+    });
+    const stillMine = await rest(`family_members?user_id=eq.${A.userId}&select=family_id`, { token: A.token });
+    const movedIn = stillMine.json?.[0]?.family_id === familyB;
+    record('self-edit', 'move own membership into another family',
+      movedIn ? 'LEAK' : 'REPELLED', `HTTP ${moveHouse.status}, still in ${movedIn ? 'B' : 'A'}`);
+
+    const forgeCreated = await rest(`family_members?id=eq.${memberIdA}`, {
+      token: A.token, method: 'PATCH', body: { created_at: '2020-01-01T00:00:00Z' },
+    });
+    record('self-edit', 'rewrite own created_at',
+      forgeCreated.status === 204 || forgeCreated.status === 200 ? 'LEAK' : 'REPELLED',
+      `HTTP ${forgeCreated.status} ${forgeCreated.json?.code ?? ''}`);
+
+    // The other direction: the five fields a member is supposed to own.
+    const ownEdit = await rest(`family_members?id=eq.${memberIdA}`, {
+      token: A.token, method: 'PATCH', body: { name: 'Probe A', relation: 'Daughter', phone: '555-0101' },
+    });
+    record('self-edit', 'edit own name, relation and phone',
+      ownEdit.status === 204 || ownEdit.status === 200 ? 'REPELLED' : 'LEAK',
+      `HTTP ${ownEdit.status} — this one MUST succeed`);
+  }
+
   // A tries to read B's membership rows, which carry user ids.
   const members = await rest(`family_members?family_id=eq.${familyB}&select=id`, { token: A.token });
   record('escalate', 'read another family\'s members',
