@@ -84,11 +84,14 @@ parent's scanned documents would look successful. Revisit this section then.
   daily backups apply; `G0-03` bought that on 09-03. An earlier version of this
   paragraph said it "has never been checked", which was wrong — the plan was
   recorded in `G0-03` all along and nobody joined it up.
-  **One claim still to check in the dashboard:** the launch plan describes Pro
-  as bringing "automated PITR". Point-in-time recovery is a paid add-on on top
-  of Pro rather than part of it, so the honest position is daily backups yes,
-  PITR unconfirmed. That difference matters: daily backups lose up to a day,
-  PITR loses minutes.
+  **PITR: checked and deliberately declined, 2026-09-28.** The launch plan
+  described Pro as bringing "automated PITR". It does not — point-in-time
+  recovery is a paid add-on on top of Pro, and Hana has decided not to buy it.
+  **So the recovery point objective for Halmoni is up to 24 hours.** That is a
+  decision, not an oversight, and it is the number to state if anyone ever asks
+  what a restore would cost in lost data. It also raises the value of the drill
+  in this document: Supabase's daily backup is now the only automatic safety
+  net there is.
 - **Nothing *of ours* is automated.** Supabase's own daily backups run without
   us, per the row above. What does not exist is a scheduled dump we control and
   can restore from on our own terms — the runbook in the launch plan is a thing
