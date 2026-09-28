@@ -1,3 +1,9 @@
+// MUST be first: installs our own IANA timezone database before anything
+// touches Intl. initSentry() below reads Intl at module scope, and every dose
+// time in the app depends on zone resolution being ours rather than the
+// phone's (G2-27).
+import '@/lib/intl-timezones';
+
 import {
   InstrumentSerif_400Regular,
   InstrumentSerif_400Regular_Italic,
