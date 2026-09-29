@@ -103,6 +103,59 @@ parent's scanned documents would look successful. Revisit this section then.
   by `G1-31`, so in practice it is `audit_log`, plus everything added since:
   `terms_acceptances`, `parent_consent_events`, `evergreen_metrics`.)
 
+## The backup that now exists
+
+`scripts/backup-halmoni.sh`, run daily by launchd
+(`scripts/com.hanachoi.halmoni-backup.plist`). It dumps `public` plus
+`auth.users` and `auth.identities`, encrypts the archive with AES-256, verifies
+the archive decrypts before reporting success, and prunes anything older than 30
+days.
+
+**It runs on the laptop, not in CI, and that is the design.** A dump needs read
+access to every row of health data. Putting that credential in GitHub Actions
+would make a compromise of the repository a full read of the medical record —
+a worse trade than the recovery point it buys. The cost is honest: it only runs
+when the machine is on, so it is a second net under Supabase's own daily backup
+rather than a replacement for it.
+
+Three guards exist because a backup that fails silently is worse than none:
+
+- a dump smaller than 1KB is refused rather than stored
+- `public.sql` must contain `CREATE TABLE public.medications`, and `auth.sql`
+  must contain `COPY auth.users` — a dump that ran but captured the wrong thing
+  looks exactly like a good one
+- the archive is decrypted and listed immediately after being written, so an
+  unreadable backup is found now rather than on the day it is needed
+
+**Restore, in order — the order is the whole point:**
+
+1. On a PostgreSQL **17 or newer** server (these are pg_dump 18 archives; a v18
+   dump will not load into v16 — the `G1-05` drill hit exactly that):
+   ```sql
+   CREATE SCHEMA IF NOT EXISTS extensions;
+   CREATE EXTENSION IF NOT EXISTS pgcrypto    WITH SCHEMA extensions;
+   CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;
+   ```
+2. `psql -v ON_ERROR_STOP=1 -f public.sql`
+3. `psql -v ON_ERROR_STOP=1 -f auth.sql`
+4. **Prove it by calling a function, not by counting rows.** `create_invite()`
+   needs `pgcrypto`; `is_family_member()` needs a real membership row. One
+   successful call proves both layers. Matching row counts are what passed
+   while the restore was unusable.
+
+To open an archive by hand:
+
+```bash
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+  -pass file:~/.halmoni-backup.key \
+  -in ~/HalmoniBackups/halmoni-<stamp>.tar.gz.enc | tar -xzf -
+```
+
+**The key is the single point of failure.** `~/.halmoni-backup.key` never leaves
+the machine and is never in this repository. A copy must live somewhere else —
+losing it makes every archive unreadable, which is the same as having no
+backups at all. That copy belongs with the `G0-01` recovery codes.
+
 ## What to change in the runbook
 
 The runbook in the launch plan proves the data survives. To prove the

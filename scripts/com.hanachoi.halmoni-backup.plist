@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Daily encrypted backup of the Halmoni production database.
+
+  Install:
+    cp scripts/com.hanachoi.halmoni-backup.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.hanachoi.halmoni-backup.plist
+
+  Check it ran:
+    tail ~/HalmoniBackups/backup.log
+
+  Run it now, without waiting:
+    launchctl start com.hanachoi.halmoni-backup
+
+  RunAtLoad is true so a laptop that was asleep at 09:00 still takes a backup
+  when it wakes, rather than silently skipping the day.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hanachoi.halmoni-backup</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/hanachoi/halmoni-mobile/scripts/backup-halmoni.sh</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>9</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/hanachoi/HalmoniBackups/backup.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/hanachoi/HalmoniBackups/backup.log</string>
+</dict>
+</plist>
