@@ -167,7 +167,7 @@ export default function EditMedicationScreen() {
             <Input
               value={timeInput}
               onChangeText={setTimeInput}
-              placeholder="HH:MM"
+              placeholder="8:30pm"
               onSubmitEditing={addTime}
               keyboardType="numbers-and-punctuation"
             />

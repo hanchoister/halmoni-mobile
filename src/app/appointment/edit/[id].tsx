@@ -122,7 +122,7 @@ export default function EditAppointmentScreen() {
         </View>
         <View style={{ flex: 1 }}>
           <Field label="Time">
-            <Input value={time} onChangeText={setTime} placeholder="HH:MM" />
+            <Input value={time} onChangeText={setTime} placeholder="8:30pm" />
           </Field>
         </View>
         <View style={{ flex: 1 }}>
