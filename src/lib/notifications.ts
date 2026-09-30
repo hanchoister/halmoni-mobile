@@ -32,7 +32,8 @@
 import * as Sentry from '@sentry/react-native';
 import * as Notifications from 'expo-notifications';
 
-import { loadPrefs, shouldNotify } from '@/lib/notification-prefs';
+import { formatDate, formatDoseTime, formatTime } from '@/lib/format';
+import { humanMinutes, loadPrefs, shouldNotify } from '@/lib/notification-prefs';
 import { Platform } from 'react-native';
 
 import { getDb } from '@/lib/db/client';
@@ -40,7 +41,6 @@ import { list } from '@/lib/db/repository';
 import type { Slot } from '@/lib/dose-plan';
 import { scheduleZone } from '@/lib/dose-plan';
 import { isDemoMode } from '@/lib/demo-mode';
-import { formatDoseTime } from '@/lib/format';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -160,7 +160,59 @@ type OnDutyRow = {
   deleted_at?: string | null;
 };
 
+type ApptRow = {
+  id: string;
+  parent_id: string;
+  provider_name?: string | null;
+  specialty?: string | null;
+  location?: string | null;
+  starts_at: string;
+  status?: string | null;
+  deleted_at?: string | null;
+};
+
 type Candidate = { at: Date; schedule: () => Promise<void> };
+
+/**
+ * One "nobody is on duty" alert per parent per day, timed to that day's first
+ * dose. Scheduled rather than sent immediately, because the useful moment is
+ * just before something is due, not the instant the app happens to sync.
+ */
+async function scheduleUnattendedAlerts(
+  parentId: string,
+  parentById: Map<string, ParentRow>,
+  candidates: Candidate[],
+  now: Date,
+  windowEnd: Date,
+  seenDays: Set<string>,
+): Promise<void> {
+  const parent = parentById.get(parentId);
+  if (!parent || parent.deleted_at) return;
+  const who = displayName(parent);
+
+  const meds = (await list('medications', { parent_id: parentId })) as unknown as MedRow[];
+  for (const med of meds) {
+    if (med.deleted_at) continue;
+    const doses = (await list('med_doses', { medication_id: med.id })) as unknown as DoseRow[];
+    for (const dose of doses) {
+      if (dose.deleted_at || dose.given_at || dose.skipped) continue;
+      const at = new Date(dose.scheduled_at);
+      if (Number.isNaN(at.getTime()) || at <= now || at > windowEnd) continue;
+      const dayKey = `${parentId}:${at.toDateString()}`;
+      if (seenDays.has(dayKey)) continue;
+      seenDays.add(dayKey);
+      candidates.push({
+        at,
+        schedule: () =>
+          scheduleAt(at, {
+            title: `No one is on duty for ${who}`,
+            body: `A dose is due now and nobody has taken the shift. Open Halmoni to take over.`,
+            data: { type: 'unattended', parentId },
+          }),
+      });
+    }
+  }
+}
 
 /**
  * Rebuild every dose-related and refill-related notification from the
@@ -217,7 +269,7 @@ async function runDoseAndRefillSync(myMemberId: string | null): Promise<void> {
     onDutyByParent.set(row.parent_id, expired ? null : row.member_id);
   }
 
-  health.prefs = `doses ${prefs.doses}, refills ${prefs.refills}`;
+  health.prefs = `doses ${prefs.doses}, refills ${prefs.refills}, appointments ${prefs.appointments}, unattended ${prefs.unattended}`;
 
   const candidates: Candidate[] = [];
   let mutedByPrefs = 0;
@@ -234,7 +286,7 @@ async function runDoseAndRefillSync(myMemberId: string | null): Promise<void> {
     // --- refill reminders: at most two, tied to a specific calendar date ---
     if (wantsRefills && med.refill_by && /^\d{4}-\d{2}-\d{2}$/.test(med.refill_by)) {
       const refillDate = new Date(`${med.refill_by}T00:00:00`);
-      for (const daysBefore of REFILL_REMINDER_DAYS) {
+      for (const daysBefore of prefs.refillDays) {
         const at = new Date(refillDate);
         at.setDate(at.getDate() - daysBefore);
         at.setHours(REFILL_REMINDER_HOUR, 0, 0, 0);
@@ -264,6 +316,25 @@ async function runDoseAndRefillSync(myMemberId: string | null): Promise<void> {
       if (at <= now || at > windowEnd) continue; // outside the rolling window
       if (dose.given_at || dose.skipped) continue; // already handled
 
+      // Heads-up before the dose. Opt-in: most people want the reminder AT the
+      // time, and a lead reminder with no follow-through is just an extra buzz.
+      for (const lead of prefs.doseLeadMinutes) {
+        const early = new Date(at.getTime() - lead * 60_000);
+        if (early <= now) continue;
+        candidates.push({
+          at: early,
+          schedule: () =>
+            scheduleAt(early, {
+              title: `${med.name} in ${humanMinutes(lead)}`,
+              body: `${parentLabel}'s ${med.name} is due at ${formatDoseTime(
+                dose.scheduled_at,
+                scheduleZone(schedule),
+              )}.`,
+              data: { type: 'dose-lead', doseId: dose.id, medicationId: med.id },
+            }),
+        });
+      }
+
       candidates.push({
         at,
         schedule: () =>
@@ -274,8 +345,12 @@ async function runDoseAndRefillSync(myMemberId: string | null): Promise<void> {
           }),
       });
 
-      const followUp = new Date(at.getTime() + UNLOGGED_FOLLOWUP_MINUTES * 60_000);
-      if (followUp > now && followUp <= windowEnd) {
+      // Nudges after the dose, if it still has not been logged. A list rather
+      // than a single value so "30 minutes and again at an hour" is a setting
+      // rather than a code change.
+      for (const after of prefs.doseFollowUpMinutes) {
+        const followUp = new Date(at.getTime() + after * 60_000);
+        if (followUp <= now || followUp > windowEnd) continue;
         candidates.push({
           at: followUp,
           schedule: () =>
@@ -291,6 +366,64 @@ async function runDoseAndRefillSync(myMemberId: string | null): Promise<void> {
             }),
         });
       }
+    }
+  }
+
+  // --- appointments -------------------------------------------------------
+  // New in G2-58. Until now the app knew about appointments and never once
+  // mentioned one, which is a strange thing for a caregiving app to do.
+  const appts = (await list('appointments')) as unknown as ApptRow[];
+  for (const appt of appts) {
+    if (appt.deleted_at) continue;
+    if (appt.status && appt.status !== 'upcoming') continue; // cancelled or done
+    const startsAt = new Date(appt.starts_at);
+    if (Number.isNaN(startsAt.getTime())) continue;
+
+    const onDuty = onDutyByParent.get(appt.parent_id) ?? null;
+    if (!shouldNotify(prefs.appointments, myMemberId, onDuty)) continue;
+
+    const parent = parentById.get(appt.parent_id);
+    const who = parent ? displayName(parent) : 'them';
+    const what = appt.provider_name || appt.specialty || 'An appointment';
+
+    for (const lead of prefs.appointmentLeadMinutes) {
+      const at = new Date(startsAt.getTime() - lead * 60_000);
+      if (at <= now || at > windowEnd) continue;
+      candidates.push({
+        at,
+        schedule: () =>
+          scheduleAt(at, {
+            title: `${what} in ${humanMinutes(lead)}`,
+            // Appointments are attended in person, so the reader's own clock is
+            // the right one here — unlike a dose, which belongs to the parent's
+            // timezone. Someone travelling to this needs their own time.
+            body: `${who}: ${what}${appt.location ? ` at ${appt.location}` : ''} on ${formatDate(
+              appt.starts_at,
+            )} at ${formatTime(appt.starts_at)}.`,
+            data: { type: 'appointment', appointmentId: appt.id },
+          }),
+      });
+    }
+  }
+
+  // --- nobody on duty -----------------------------------------------------
+  // Asked for explicitly: do not wait for a dose reminder to be the thing that
+  // reveals nobody is covering. One alert per parent per day, at the first
+  // dose of that day, because a shift gap matters exactly when something is
+  // about to be due — and because a standing "nobody is on duty" buzz every
+  // hour would be noise nobody reads.
+  if (prefs.unattended !== 'off') {
+    const seenDays = new Set<string>();
+    for (const [parentId, holder] of onDutyByParent.entries()) {
+      if (holder) continue; // somebody has it
+      await scheduleUnattendedAlerts(parentId, parentById, candidates, now, windowEnd, seenDays);
+    }
+    // A parent with no on_duty row at all never appears in the map, so it is
+    // not enough to walk the map — walk the parents.
+    for (const parent of parents) {
+      if (parent.deleted_at) continue;
+      if (onDutyByParent.has(parent.id)) continue;
+      await scheduleUnattendedAlerts(parent.id, parentById, candidates, now, windowEnd, seenDays);
     }
   }
 
