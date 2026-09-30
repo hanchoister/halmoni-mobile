@@ -193,9 +193,9 @@ export default function AccountScreen() {
           dev-only flag would be worse, because the whole point is to read it
           out to someone on the phone during support.
 
-          So: the standard escape hatch. Tap the version line seven times. A
-          caregiver will never do that by accident; support can say "tap the
-          version number seven times" in one breath.
+          So: the standard escape hatch. Tap the version line three times. A
+          caregiver will not do that by accident; support can say "tap the
+          version number three times" in one breath.
         */}
         <View style={{ height: spacing.sm }} />
         <Text
@@ -204,7 +204,7 @@ export default function AccountScreen() {
           onPress={() => {
             const next = diagTaps + 1;
             setDiagTaps(next);
-            if (next >= 7) {
+            if (next >= 3) {
               setDiagTaps(0);
               router.push('/diagnostics');
             }
