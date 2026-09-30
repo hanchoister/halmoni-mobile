@@ -41,11 +41,17 @@ evening. A wrong SEV3 that was a SEV1 costs the thing the product is for.
 **Do these in order. Do not skip to the fix.**
 
 1. **Contain.** Revoke what is leaking: rotate the DB password
-   (Project Settings → Database), revoke share kits
-   (`share_kits.revoked_at`), or disable the affected RLS-covered path. Do this
-   before you understand the whole picture.
-2. **Preserve evidence.** Screenshot dashboards, save the logs. Supabase's free
-   tier retains little, and it will not wait for you.
+   (Project Settings → Database), revoke the affected user's sessions, or
+   disable the affected RLS-covered path. Do this before you understand the
+   whole picture. **There are no share kits any more** — `G1-31` removed the
+   table and the doctor link in migration 12, so do not go looking for
+   `share_kits.revoked_at`. The Care Kit is a locally generated PDF with no
+   server-side artefact to revoke.
+2. **Preserve evidence.** Screenshot dashboards, save the logs. Log retention
+   is finite and will not wait for you. Also take a manual backup before you
+   change anything — `bash ~/halmoni-mobile/scripts/backup-halmoni.sh` — so the
+   state at the moment you noticed is preserved, not just the state after you
+   started fixing.
 3. **Establish scope.** Which rows, which families, which people — including
    the parents, who are not users and cannot check for themselves.
 4. **Write the timeline** while it is fresh: when it started, when you noticed,
@@ -83,14 +89,29 @@ Halt the phased rollout in App Store Connect first, then diagnose. TestFlight
 builds can simply be expired.
 
 **Bad migration**
-There is no automated backup on the free tier. Recovery means the most recent
-`pg_dump` — see the backup runbook in the living plan — which restores **care
-data only**: not accounts, not storage, and not 10 of the 31 RLS policies.
-Assume any restore leaves the app non-functional until `auth` is dealt with.
+Two nets, in this order. **1.** `~/HalmoniBackups/` holds a daily encrypted
+dump (`scripts/backup-halmoni.sh`, launchd, since 2026-09-29) — most recent
+first, decrypt with `~/.halmoni-backup.key`. **2.** Supabase's own daily backup
+on Pro. Point-in-time recovery was priced and declined (2026-09-28), so **the
+worst case is losing up to a day**, not minutes.
+
+What a restore does and does not give you is in `docs/backup-completeness.md`,
+and the order matters: extensions first, then `public`, then `auth`. **Prove it
+by calling `create_invite()` and `is_family_member()`, not by counting rows** —
+matching row counts are exactly what passed while a restore was unusable.
+
+Of the 66 policies in `public`, **12 reference `auth.uid()` directly** and will
+not apply on a plain Postgres without an `auth.uid()` stub; the other 55 go
+through `public.is_family_member(...)`. Assume any restore leaves the app
+non-functional until `auth` is dealt with.
 
 **Landing page or demo broken**
-`cd ~/halmoni-landing && vercel --prod --yes`. Git push alone does not deploy —
-the GitHub integration has been broken since 2026-08-10.
+`cd ~/halmoni-landing && git push origin main`. Production follows `main` within
+seconds. **Corrected 2026-09-29:** this page previously said the GitHub
+integration was broken and to run `vercel --prod --yes` by hand. That has been
+untrue since 2026-09-07, and following it produced pairs of duplicate
+deployments. Verified again today by pushing the waitlist fix and watching it go
+live. Reach for the CLI only if a git deploy demonstrably does not appear.
 
 ---
 
@@ -104,9 +125,15 @@ the GitHub integration has been broken since 2026-08-10.
 | EAS | Build and submission history |
 | In-app | Diagnostics screen: backend ref, last sync, pending and quarantined writes |
 
-**Gap, as of 2026-09-02:** Sentry is not installed (`G1-07`). Until it is,
-"did it crash, and why" can only be answered by asking the family. That is the
-single biggest hole in this page.
+**Closed since this page was written:** Sentry *is* installed (`G1-07`), scrubbed
+so crash reports cannot carry health data (`verify:scrub` guards it in CI), and
+symbol upload works (`G2-43`). Every event is tagged with whether the device can
+resolve timezones (`tz.resolves`), which is the one thing that silently breaks
+dose times. The diagnostics screen exists too (`G1-09`) — backend ref, demo
+mode, last sync, pending and quarantined writes, and a TIME card.
+
+**The remaining hole:** no crash data has ever come from a real device, because
+no build has run on one (`G2-56`). Sentry is wired but unproven in the field.
 
 ---
 
