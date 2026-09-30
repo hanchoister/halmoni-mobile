@@ -29,6 +29,7 @@
  * never announced twice and a fresh install never announces every handoff in
  * the family's history at once.
  */
+import * as Sentry from '@sentry/react-native';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
@@ -63,12 +64,56 @@ const REFILL_REMINDER_HOUR = 9;
 
 let permissionAsked = false;
 
+/**
+ * What the last notification sync actually did, for the diagnostics screen.
+ *
+ * This exists because G2-09 shipped, compiled, mounted, and then did nothing
+ * observable on a real device — no permission prompt, no scheduled reminders,
+ * nothing in the logs. The caller does `void syncDoseAndRefillNotifications()`,
+ * so any rejection inside was swallowed in silence. For a medication reminder
+ * that is the worst possible failure mode: the feature looks present and simply
+ * never fires, and nobody finds out until a parent misses a dose.
+ *
+ * So the module now records what happened and the diagnostics screen shows it.
+ * "Did the reminders get set" becomes a thing you can read, rather than a thing
+ * you infer from their absence.
+ */
+export type NotificationHealth = {
+  lastRunAt: string | null;
+  permission: 'granted' | 'denied' | 'undetermined' | 'unknown';
+  canAskAgain: boolean | null;
+  scheduled: number | null;
+  lastError: string | null;
+  skippedReason: string | null;
+};
+
+let health: NotificationHealth = {
+  lastRunAt: null,
+  permission: 'unknown',
+  canAskAgain: null,
+  scheduled: null,
+  lastError: null,
+  skippedReason: 'has not run yet',
+};
+
+export function getNotificationHealth(): NotificationHealth {
+  return { ...health };
+}
+
 async function ensurePermission(): Promise<boolean> {
   const current = await Notifications.getPermissionsAsync();
+  health.permission = current.granted
+    ? 'granted'
+    : current.canAskAgain
+      ? 'undetermined'
+      : 'denied';
+  health.canAskAgain = current.canAskAgain ?? null;
   if (current.granted) return true;
   if (permissionAsked && !current.canAskAgain) return false;
   permissionAsked = true;
   const req = await Notifications.requestPermissionsAsync();
+  health.permission = req.granted ? 'granted' : req.canAskAgain ? 'undetermined' : 'denied';
+  health.canAskAgain = req.canAskAgain ?? null;
   return req.granted;
 }
 
@@ -111,9 +156,33 @@ type Candidate = { at: Date; schedule: () => Promise<void> };
  * incremental patch.
  */
 export async function syncDoseAndRefillNotifications(): Promise<void> {
-  if (isDemoMode()) return; // demo fixtures are not real reminders
+  try {
+    await runDoseAndRefillSync();
+  } catch (err) {
+    // Never rethrow: the caller voids this, so throwing here is the same as
+    // failing silently. Record it where a human can see it instead.
+    health.lastRunAt = new Date().toISOString();
+    health.lastError = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    health.scheduled = null;
+    Sentry.captureException(err, { tags: { feature: 'notifications' } });
+  }
+}
+
+async function runDoseAndRefillSync(): Promise<void> {
+  health.lastRunAt = new Date().toISOString();
+  health.lastError = null;
+  health.skippedReason = null;
+
+  if (isDemoMode()) {
+    health.skippedReason = 'demo mode';
+    return; // demo fixtures are not real reminders
+  }
   const granted = await ensurePermission();
-  if (!granted) return;
+  if (!granted) {
+    health.skippedReason = 'notification permission not granted';
+    health.scheduled = 0;
+    return;
+  }
 
   const now = new Date();
   const windowEnd = new Date(now.getTime() + NOTIFICATION_WINDOW_DAYS * 86_400_000);
@@ -199,8 +268,19 @@ export async function syncDoseAndRefillNotifications(): Promise<void> {
   // dropped are the furthest away, which is also the ones most likely to be
   // superseded by the next sync's reschedule before they would have mattered.
   candidates.sort((a, b) => a.at.getTime() - b.at.getTime());
-  for (const c of candidates.slice(0, MAX_SCHEDULED)) {
+  const due = candidates.slice(0, MAX_SCHEDULED);
+  for (const c of due) {
     await c.schedule();
+  }
+
+  health.scheduled = due.length;
+  if (due.length === 0) {
+    // Not an error, but the difference between "nothing to remind about" and
+    // "broken" is exactly what someone is trying to work out at 2am.
+    health.skippedReason =
+      candidates.length === 0
+        ? 'no doses or refills fall inside the next few days'
+        : null;
   }
 }
 

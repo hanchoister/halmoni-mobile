@@ -4,15 +4,20 @@
 // reinstalling", and so the answer to "which backend am I even talking to"
 // doesn't require reading a .env file over the phone.
 
+import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
 
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Screen } from '@/components/ui/screen';
 import { getDb } from '@/lib/db/client';
 import { deviceZone, zoneSupported } from '@/lib/dose-plan';
 import { useDemoMode } from '@/lib/demo-mode';
+import { useFamily } from '@/lib/family';
+import { useMe } from '@/lib/me';
+import { getNotificationHealth, type NotificationHealth } from '@/lib/notifications';
 import { useSyncStatus } from '@/lib/sync/state';
 import { palette, spacing } from '@/lib/theme';
 
@@ -57,6 +62,10 @@ export default function DiagnosticsScreen() {
   const demo = useDemoMode();
   const { status, lastSyncAt, lastError } = useSyncStatus();
   const [queue, setQueue] = useState<QueueCounts | null>(null);
+  const { familyId } = useFamily();
+  const { me } = useMe();
+  const [notif, setNotif] = useState<NotificationHealth | null>(null);
+  const [rows, setRows] = useState<string | null>(null);
   const [queueError, setQueueError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -71,8 +80,17 @@ export default function DiagnosticsScreen() {
           `SELECT COUNT(*) as n FROM pending_writes WHERE attempts >= ?`,
           QUARANTINE_ATTEMPTS,
         );
+        // Row counts answer "is anything actually down there" without asking
+        // the caregiver to describe what they can see.
+        const counts: string[] = [];
+        for (const t of ['parents', 'medications', 'med_doses', 'appointments']) {
+          const r = await db.getFirstAsync<{ n: number }>(`SELECT COUNT(*) as n FROM ${t}`);
+          counts.push(`${t.replace('_', ' ')} ${r?.n ?? 0}`);
+        }
         if (!cancelled) {
           setQueue({ pending: total?.n ?? 0, quarantined: quarantined?.n ?? 0 });
+          setRows(counts.join(' · '));
+          setNotif(getNotificationHealth());
         }
       } catch (e) {
         if (!cancelled) setQueueError(e instanceof Error ? e.message : String(e));
@@ -136,11 +154,76 @@ export default function DiagnosticsScreen() {
       </Card>
 
       <Card>
+        <Text style={styles.sectionLabel}>REMINDERS</Text>
+        {/*
+          G2-09 shipped, compiled, mounted — and did nothing observable on a
+          real device. The caller voids the sync, so a failure inside was
+          invisible. For a medication reminder that is the worst failure mode
+          there is: present, silent, and only discovered when a dose is missed.
+          These four lines are the difference between "not set up" and "broken".
+        */}
+        <Row label="Permission" value={notif?.permission ?? 'reading…'} />
+        <Row
+          label="Reminders set"
+          value={notif?.scheduled == null ? '—' : String(notif.scheduled)}
+        />
+        <Row label="Last checked" value={since(notif?.lastRunAt ?? null)} />
+        {notif?.skippedReason && <Row label="Nothing set because" value={notif.skippedReason} />}
+        {notif?.lastError && <Row label="Last error" value={notif.lastError} />}
+      </Card>
+
+      <Card>
+        <Text style={styles.sectionLabel}>THIS ACCOUNT</Text>
+        {/*
+          Short ids, not full ones: enough for support to find the right rows,
+          not enough to be mistaken for something a caregiver should act on.
+        */}
+        <Row label="Family" value={familyId ? `${familyId.slice(0, 8)}…` : 'none'} />
+        <Row label="Member" value={me?.id ? `${me.id.slice(0, 8)}…` : 'none'} />
+        <Row label="On this device" value={rows ?? 'reading…'} />
+      </Card>
+
+      <Card>
+        <Text style={styles.sectionLabel}>DEVICE</Text>
+        <Row label="System" value={`${Platform.OS} ${String(Platform.Version)}`} />
+        <Row label="Model" value={Constants.deviceName ?? 'unknown'} />
+        <Row label="Install" value={Constants.executionEnvironment ?? 'unknown'} />
+      </Card>
+
+      <Card>
         <Text style={styles.sectionLabel}>APP</Text>
         <Row label="Version" value={appVersion} />
         <Row label="Build" value={buildNumber} />
         <Row label="Runtime" value={runtimeVersion} />
       </Card>
+
+      {/*
+        The whole page as text, in one tap. Reading twenty fields down a phone
+        line is how details get transcribed wrong; this is how support gets the
+        real thing. No health data is included — ids are truncated and no name,
+        medication or date ever appears on this screen.
+      */}
+      <Button
+        title="Copy this page"
+        variant="secondary"
+        onPress={async () => {
+          const lines = [
+            `Halmoni ${appVersion} (build ${buildNumber}, runtime ${runtimeVersion})`,
+            `${Platform.OS} ${String(Platform.Version)} · ${Constants.deviceName ?? 'unknown'} · ${Constants.executionEnvironment ?? 'unknown'}`,
+            `backend ${backendRef()} · ${demo ? 'demo' : 'live'}`,
+            `sync ${status} · last ${since(lastSyncAt)} · pending ${queue?.pending ?? '?'} · quarantined ${queue?.quarantined ?? '?'}`,
+            lastError ? `sync error ${lastError}` : null,
+            `timezone ${deviceZone() ?? 'unavailable'} · zones ${zoneSupported('America/New_York') ? 'ok' : 'UNSUPPORTED'}`,
+            `reminders permission ${notif?.permission ?? '?'} · set ${notif?.scheduled ?? '?'} · checked ${since(notif?.lastRunAt ?? null)}`,
+            notif?.skippedReason ? `reminders skipped: ${notif.skippedReason}` : null,
+            notif?.lastError ? `reminders error: ${notif.lastError}` : null,
+            `family ${familyId?.slice(0, 8) ?? 'none'} · member ${me?.id?.slice(0, 8) ?? 'none'}`,
+            `local rows ${rows ?? '?'}`,
+          ].filter(Boolean);
+          await Clipboard.setStringAsync(lines.join('\n'));
+          Alert.alert('Copied', 'Paste this into your message to support.');
+        }}
+      />
     </Screen>
   );
 }

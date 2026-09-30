@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
 import { useState } from 'react';
@@ -14,14 +15,16 @@ import { useFamily } from '@/lib/family';
 import { useMe } from '@/lib/me';
 import { supabase } from '@/lib/supabase';
 import { PRIVACY_URL, TERMS_URL } from '@/lib/terms';
-import { palette, spacing } from '@/lib/theme';
+import { palette, spacing, typography } from '@/lib/theme';
 import { signOutEverywhere } from '@/lib/sign-out';
 
 export default function AccountScreen() {
+  const appVersion = Constants.expoConfig?.version ?? '—';
   const { session } = useAuth();
   const { me, siblings } = useMe();
   const { familyId } = useFamily();
   const [busy, setBusy] = useState(false);
+  const [diagTaps, setDiagTaps] = useState(0);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [confirmText, setConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -181,12 +184,33 @@ export default function AccountScreen() {
           variant="secondary"
           busy={busy}
         />
+        {/*
+          Diagnostics is deliberately NOT a visible button.
+
+          It is a support tool, not a feature: backend refs, sync internals and
+          raw ids mean nothing to a caregiver and invite worry ("what is a
+          quarantined write? is my mum's data stuck?"). But hiding it behind a
+          dev-only flag would be worse, because the whole point is to read it
+          out to someone on the phone during support.
+
+          So: the standard escape hatch. Tap the version line seven times. A
+          caregiver will never do that by accident; support can say "tap the
+          version number seven times" in one breath.
+        */}
         <View style={{ height: spacing.sm }} />
-        <Button
-          title="Diagnostics"
-          onPress={() => router.push('/diagnostics')}
-          variant="ghost"
-        />
+        <Text
+          style={styles.buildLine}
+          suppressHighlighting
+          onPress={() => {
+            const next = diagTaps + 1;
+            setDiagTaps(next);
+            if (next >= 7) {
+              setDiagTaps(0);
+              router.push('/diagnostics');
+            }
+          }}>
+          Halmoni {appVersion}
+        </Text>
       </Card>
 
       <Card>
@@ -262,6 +286,13 @@ export default function AccountScreen() {
 }
 
 const styles = StyleSheet.create({
+  buildLine: {
+    ...typography.meta,
+    fontSize: 12,
+    color: palette.sage700,
+    textAlign: 'center',
+    paddingVertical: spacing.sm,
+  },
   sectionLabel: {
     fontSize: 11,
     fontWeight: '700',
