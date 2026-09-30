@@ -31,6 +31,8 @@
  */
 import * as Sentry from '@sentry/react-native';
 import * as Notifications from 'expo-notifications';
+
+import { loadPrefs, shouldNotify } from '@/lib/notification-prefs';
 import { Platform } from 'react-native';
 
 import { getDb } from '@/lib/db/client';
@@ -85,6 +87,8 @@ export type NotificationHealth = {
   scheduled: number | null;
   lastError: string | null;
   skippedReason: string | null;
+  /** What this phone is set to, so support can see it without asking. */
+  prefs: string | null;
 };
 
 let health: NotificationHealth = {
@@ -94,6 +98,7 @@ let health: NotificationHealth = {
   scheduled: null,
   lastError: null,
   skippedReason: 'has not run yet',
+  prefs: null,
 };
 
 export function getNotificationHealth(): NotificationHealth {
@@ -148,6 +153,13 @@ async function cancelAllOwn(): Promise<void> {
   await Notifications.cancelAllScheduledNotificationsAsync();
 }
 
+type OnDutyRow = {
+  parent_id: string;
+  member_id: string;
+  until?: string | null;
+  deleted_at?: string | null;
+};
+
 type Candidate = { at: Date; schedule: () => Promise<void> };
 
 /**
@@ -155,9 +167,9 @@ type Candidate = { at: Date; schedule: () => Promise<void> };
  * current local mirror. Safe to call often; it is a full replace, not an
  * incremental patch.
  */
-export async function syncDoseAndRefillNotifications(): Promise<void> {
+export async function syncDoseAndRefillNotifications(myMemberId: string | null = null): Promise<void> {
   try {
-    await runDoseAndRefillSync();
+    await runDoseAndRefillSync(myMemberId);
   } catch (err) {
     // Never rethrow: the caller voids this, so throwing here is the same as
     // failing silently. Record it where a human can see it instead.
@@ -168,7 +180,7 @@ export async function syncDoseAndRefillNotifications(): Promise<void> {
   }
 }
 
-async function runDoseAndRefillSync(): Promise<void> {
+async function runDoseAndRefillSync(myMemberId: string | null): Promise<void> {
   health.lastRunAt = new Date().toISOString();
   health.lastError = null;
   health.skippedReason = null;
@@ -187,21 +199,40 @@ async function runDoseAndRefillSync(): Promise<void> {
   const now = new Date();
   const windowEnd = new Date(now.getTime() + NOTIFICATION_WINDOW_DAYS * 86_400_000);
 
-  const [meds, parents] = await Promise.all([
+  const [meds, parents, duty, prefs] = await Promise.all([
     list('medications') as unknown as Promise<MedRow[]>,
     list('parents') as unknown as Promise<ParentRow[]>,
+    list('on_duty') as unknown as Promise<OnDutyRow[]>,
+    loadPrefs(),
   ]);
   const parentById = new Map(parents.map((p) => [p.id, p]));
 
+  // Who holds the shift for each parent, right now. A row whose `until` has
+  // passed is nobody — a shift that ended is not a shift, and treating it as
+  // one would silence every other phone indefinitely.
+  const onDutyByParent = new Map<string, string | null>();
+  for (const row of duty) {
+    if (row.deleted_at) continue;
+    const expired = row.until ? new Date(row.until).getTime() <= now.getTime() : false;
+    onDutyByParent.set(row.parent_id, expired ? null : row.member_id);
+  }
+
+  health.prefs = `doses ${prefs.doses}, refills ${prefs.refills}`;
+
   const candidates: Candidate[] = [];
+  let mutedByPrefs = 0;
 
   for (const med of meds) {
     if (med.deleted_at) continue;
     const parent = parentById.get(med.parent_id);
     const parentLabel = parent ? displayName(parent) : 'them';
+    const onDuty = onDutyByParent.get(med.parent_id) ?? null;
+    const wantsDoses = shouldNotify(prefs.doses, myMemberId, onDuty);
+    const wantsRefills = shouldNotify(prefs.refills, myMemberId, onDuty);
+    if (!wantsDoses && !wantsRefills) mutedByPrefs++;
 
     // --- refill reminders: at most two, tied to a specific calendar date ---
-    if (med.refill_by && /^\d{4}-\d{2}-\d{2}$/.test(med.refill_by)) {
+    if (wantsRefills && med.refill_by && /^\d{4}-\d{2}-\d{2}$/.test(med.refill_by)) {
       const refillDate = new Date(`${med.refill_by}T00:00:00`);
       for (const daysBefore of REFILL_REMINDER_DAYS) {
         const at = new Date(refillDate);
@@ -222,6 +253,7 @@ async function runDoseAndRefillSync(): Promise<void> {
     }
 
     // --- dose due + unlogged follow-up, within the rolling window ---
+    if (!wantsDoses) continue;
     const schedule = (med.schedule ?? []) as Slot[];
     if (schedule.length === 0) continue;
     const doses = (await list('med_doses', { medication_id: med.id })) as unknown as DoseRow[];
@@ -279,7 +311,9 @@ async function runDoseAndRefillSync(): Promise<void> {
     // "broken" is exactly what someone is trying to work out at 2am.
     health.skippedReason =
       candidates.length === 0
-        ? 'no doses or refills fall inside the next few days'
+        ? mutedByPrefs > 0
+          ? 'your notification settings mute these on this phone'
+          : 'no doses or refills fall inside the next few days'
         : null;
   }
 }
@@ -355,6 +389,11 @@ export async function syncHandoffNotifications(meId: string | null): Promise<voi
     return;
   }
 
+  const prefs = await loadPrefs();
+  // Hand-offs are addressed to one person by name, so there is no duty filter
+  // to apply — someone handing the shift TO you is precisely the moment you
+  // are not yet on it.
+  if (prefs.handoffs === 'off') return;
   const granted = mine.some((h) => !seen.has(h.id)) ? await ensurePermission() : true;
 
   for (const h of mine) {

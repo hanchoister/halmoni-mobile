@@ -82,6 +82,12 @@ function AppStack() {
       <Stack.Screen name="profile" options={{ title: 'Profile' }} />
       <Stack.Screen name="patterns" options={{ title: 'Questions to ask' }} />
       <Stack.Screen name="account" options={{ title: 'Account' }} />
+      {/* Without these the header falls back to the route name, so the screens
+          read "diagnostics" and "notification-settings" — which is how a
+          half-finished app looks to someone deciding whether to trust it with
+          their mother's medication list. */}
+      <Stack.Screen name="notification-settings" options={{ title: 'Notifications' }} />
+      <Stack.Screen name="diagnostics" options={{ title: 'Diagnostics' }} />
       <Stack.Screen name="parent/new" options={{ title: 'Add parent', presentation: 'modal' }} />
       <Stack.Screen name="parent/edit/[id]" options={{ title: 'Edit details', presentation: 'modal' }} />
       <Stack.Screen name="handoff/new" options={{ title: 'Hand off', presentation: 'modal' }} />
@@ -126,7 +132,9 @@ function NotificationSync() {
   const { status, lastSyncAt } = useSyncStatus();
   useEffect(() => {
     if (status !== 'synced' || !lastSyncAt) return;
-    void syncDoseAndRefillNotifications();
+    // The member id is what "only my shifts" compares against, so the dose
+    // scheduler needs it too — not just the hand-off one.
+    void syncDoseAndRefillNotifications(me?.id ?? null);
     void syncHandoffNotifications(me?.id ?? null);
   }, [status, lastSyncAt, me?.id]);
   return null;

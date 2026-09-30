@@ -149,6 +149,20 @@ export default function AccountScreen() {
       </Card>
 
       <Card>
+        <Text style={styles.sectionLabel}>NOTIFICATIONS</Text>
+        <Text style={styles.sub}>
+          Choose what this phone tells you about — every time, or only while you are on
+          duty.
+        </Text>
+        <View style={{ height: spacing.sm }} />
+        <Button
+          title="Notification settings"
+          onPress={() => router.push('/notification-settings')}
+          variant="secondary"
+        />
+      </Card>
+
+      <Card>
         <Text style={styles.sectionLabel}>LEGAL</Text>
         <Text style={styles.sub}>Review what Halmoni does with your family&apos;s data.</Text>
         <View style={{ height: spacing.sm }} />
