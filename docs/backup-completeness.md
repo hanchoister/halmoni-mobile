@@ -35,7 +35,7 @@ ten days (migration 13).
 ## The four layers, and which are actually at risk
 
 **1. Schema and data in `public` — covered by the existing drill.**
-26 tables, 37 RLS policies, 6 enum types (`appt_status`, `member_color`,
+26 tables, **66** RLS policies (not the 37 this doc first said — that figure came from the launch plan and was stale; counted from the first real archive and confirmed against `pg_policies` on 2026-09-29), 6 enum types (`appt_status`, `member_color`,
 `note_kind`, `pill_shape`, `severity_level`, `visit_note_kind`), the
 `set_updated_at` triggers, the consent triggers, and the SECURITY DEFINER
 functions. A `--schema=public` dump carries all of it, types and triggers
