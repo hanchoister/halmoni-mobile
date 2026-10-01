@@ -170,6 +170,17 @@ export default function DiagnosticsScreen() {
           label="Reminders set"
           value={notif?.scheduled == null ? '—' : String(notif.scheduled)}
         />
+        <Row
+          label="Repeating daily"
+          value={notif?.repeating == null ? '—' : String(notif.repeating)}
+        />
+        <Row
+          label="Set for the next"
+          value={notif?.horizonDays == null ? '—' : `${notif.horizonDays} days`}
+        />
+        {Boolean(notif?.dropped) && (
+          <Row label="Dropped (iOS limit)" value={String(notif?.dropped)} />
+        )}
         <Row label="Last checked" value={since(notif?.lastRunAt ?? null)} />
         {notif?.skippedReason && <Row label="Nothing set because" value={notif.skippedReason} />}
         {notif?.lastError && <Row label="Last error" value={notif.lastError} />}
@@ -222,7 +233,7 @@ export default function DiagnosticsScreen() {
             `sync ${status} · last ${since(lastSyncAt)} · pending ${queue?.pending ?? '?'} · quarantined ${queue?.quarantined ?? '?'}`,
             lastError ? `sync error ${lastError}` : null,
             `timezone ${deviceZone() ?? 'unavailable'} · zones ${zoneSupported('America/New_York') ? 'ok' : 'UNSUPPORTED'}`,
-            `reminders permission ${notif?.permission ?? '?'} · set ${notif?.scheduled ?? '?'} · checked ${since(notif?.lastRunAt ?? null)}`,
+            `reminders permission ${notif?.permission ?? '?'} · set ${notif?.scheduled ?? '?'} (${notif?.repeating ?? '?'} repeating) · horizon ${notif?.horizonDays ?? '?'}d · dropped ${notif?.dropped ?? 0} · checked ${since(notif?.lastRunAt ?? null)}`,
             notif?.skippedReason ? `reminders skipped: ${notif.skippedReason}` : null,
             notif?.lastError ? `reminders error: ${notif.lastError}` : null,
             `settings storage ${storageNote ?? 'keychain'}`,

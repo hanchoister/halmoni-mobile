@@ -16,11 +16,26 @@
  * iOS caps an app at 64 pending local notifications and silently drops
  * anything past that — there is no error, no event, nothing to catch in a
  * test, the 65th notification simply never fires. "Silent staleness is the
- * worst thing this app can do" (see sync-banner.tsx), so this only ever
- * schedules within a short rolling window (NOTIFICATION_WINDOW_DAYS) rather
- * than the full 90-day dose horizon, and caps the total it will schedule,
- * soonest first, so a family with many medications degrades by dropping the
- * furthest-out reminders rather than by silently dropping random ones.
+ * worst thing this app can do" (see sync-banner.tsx), so the ceiling is
+ * treated as a budget and spent deliberately, in three parts:
+ *
+ *   1. REPEATING triggers for dose reminders. One per medication slot, daily,
+ *      for ever — so four medications taken three times a day cost 12 pending
+ *      notifications in total rather than ~36 a day. This is what takes the
+ *      ceiling off the table for a realistic family, and the only mechanism
+ *      here that keeps reminders arriving when nobody opens the app for weeks.
+ *      Each carries the medication's own timezone, or it would quietly undo
+ *      G2-27 by firing at the reader's clock.
+ *
+ *   2. A HORIZON for the one-offs that remain — unlogged nudges, refills,
+ *      appointments, uncovered shifts — generated up to NOTIFICATION_WINDOW_DAYS
+ *      and then trimmed to whatever budget the repeaters left. The horizon that
+ *      results is reported in diagnostics, because "reminders are set for the
+ *      next 9 days" is a different conversation from "reminders are set".
+ *
+ *   3. PRIORITY when it still does not fit. What gets dropped is the least
+ *      important AND furthest away, never simply the furthest: a heads-up three
+ *      days out must not survive while the dose reminder behind it is binned.
  *
  * Handoff notifications are a different shape — a one-time "this just
  * happened" alert, not a recurring reminder — so they are not part of the
@@ -53,7 +68,13 @@ Notifications.setNotificationHandler({
 
 // How far ahead to schedule dose reminders. Short on purpose — see the
 // module comment on the 64-pending-notification ceiling.
-const NOTIFICATION_WINDOW_DAYS = 3;
+// How far ahead one-off reminders are generated. Was 3 days, when every dose
+// cost a pending notification per day and the ceiling was reached in under
+// two. Dose reminders are repeating triggers now, so the one-offs that remain
+// — unlogged nudges, refills, appointments, uncovered shifts — are sparse
+// enough to look much further ahead. The EFFECTIVE horizon is still decided by
+// the budget below, not by this number: this is the maximum, not a promise.
+const NOTIFICATION_WINDOW_DAYS = 14;
 // Hard ceiling this module will ever ask the OS to hold, leaving headroom
 // under Apple's 64 for anything else scheduled elsewhere (there is nothing
 // else today, but a ceiling that assumes it owns 100% of the budget forever
@@ -89,6 +110,12 @@ export type NotificationHealth = {
   skippedReason: string | null;
   /** What this phone is set to, so support can see it without asking. */
   prefs: string | null;
+  /** Daily repeating triggers — these cover every day, for ever. */
+  repeating: number | null;
+  /** How far ahead the one-off reminders actually reach, after the budget. */
+  horizonDays: number | null;
+  /** One-offs the iOS ceiling forced us to drop, lowest value first. */
+  dropped: number | null;
 };
 
 let health: NotificationHealth = {
@@ -99,6 +126,9 @@ let health: NotificationHealth = {
   lastError: null,
   skippedReason: 'has not run yet',
   prefs: null,
+  repeating: null,
+  horizonDays: null,
+  dropped: null,
 };
 
 export function getNotificationHealth(): NotificationHealth {
@@ -171,7 +201,31 @@ type ApptRow = {
   deleted_at?: string | null;
 };
 
-type Candidate = { at: Date; schedule: () => Promise<void> };
+/**
+ * What gets dropped first when iOS's ceiling is reached.
+ *
+ * iOS keeps only the 64 soonest PENDING notifications and silently discards
+ * the rest. Before this, the loser was simply whatever was furthest away,
+ * which meant a lead reminder three days out could survive while the dose-due
+ * reminder behind it did not. Now the order is importance first, time second:
+ * if something has to go, it is the heads-up, never the dose itself.
+ */
+const PRIORITY = {
+  'dose-due': 0,
+  unattended: 1,
+  'dose-unlogged': 2,
+  appointment: 3,
+  refill: 4,
+  'dose-lead': 5,
+} as const;
+
+type Kind = keyof typeof PRIORITY;
+
+type Candidate = {
+  at: Date;
+  kind: Kind;
+  schedule: () => Promise<void>;
+};
 
 /**
  * One "nobody is on duty" alert per parent per day, timed to that day's first
@@ -203,6 +257,7 @@ async function scheduleUnattendedAlerts(
       seenDays.add(dayKey);
       candidates.push({
         at,
+        kind: 'unattended',
         schedule: () =>
           scheduleAt(at, {
             title: `No one is on duty for ${who}`,
@@ -272,6 +327,7 @@ async function runDoseAndRefillSync(myMemberId: string | null): Promise<void> {
   health.prefs = `doses ${prefs.doses}, refills ${prefs.refills}, appointments ${prefs.appointments}, unattended ${prefs.unattended}`;
 
   const candidates: Candidate[] = [];
+  const repeaters: { kind: Kind; schedule: () => Promise<void> }[] = [];
   let mutedByPrefs = 0;
 
   for (const med of meds) {
@@ -294,6 +350,7 @@ async function runDoseAndRefillSync(myMemberId: string | null): Promise<void> {
         const label = daysBefore === 1 ? 'tomorrow' : `in ${daysBefore} days`;
         candidates.push({
           at,
+          kind: 'refill',
           schedule: () =>
             scheduleAt(at, {
               title: `${med.name} refill due ${label}`,
@@ -308,6 +365,58 @@ async function runDoseAndRefillSync(myMemberId: string | null): Promise<void> {
     if (!wantsDoses) continue;
     const schedule = (med.schedule ?? []) as Slot[];
     if (schedule.length === 0) continue;
+
+    // --- the repeating part -------------------------------------------------
+    // One daily trigger per slot, instead of one notification per dose per day.
+    // 4 medications taken 3 times a day stop costing ~36 pending notifications
+    // a day and cost 12 in total, for ever — which takes iOS's 64 ceiling off
+    // the table for any realistic family, and keeps reminders arriving even if
+    // nobody opens the app for a month.
+    //
+    // The trigger carries the medication's own timezone, so an 08:00 dose
+    // entered in New York still fires at 08:00 New York on a phone in
+    // California. Without that this would quietly undo G2-27.
+    //
+    // The trade, stated honestly: a repeating trigger cannot know whether today's
+    // dose was already logged, so it fires regardless. That is barely a
+    // regression — the one-off version only skipped a logged dose if a sync
+    // happened between the logging and the dose time, which is not the common
+    // case. Unlogged follow-ups stay one-off precisely because they DO need to
+    // know.
+    const zone = scheduleZone(schedule) ?? undefined;
+    for (const slot of schedule) {
+      const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(slot.time ?? '');
+      if (!m) continue;
+      const hour = parseInt(m[1], 10);
+      const minute = parseInt(m[2], 10);
+
+      repeaters.push({
+        kind: 'dose-due',
+        schedule: () =>
+          scheduleDaily(hour, minute, zone, {
+            title: `${med.name} is due`,
+            body: `${parentLabel}'s ${med.name}${med.name.endsWith('due') ? '' : ' dose'} is due now.`,
+            data: { type: 'dose-due', medicationId: med.id },
+          }),
+      });
+
+      for (const lead of prefs.doseLeadMinutes) {
+        // Subtracting can cross midnight — 15 minutes before 00:05 is 23:50 the
+        // previous day. As a daily repeat that is simply a different time of
+        // day, so the wrap is arithmetic rather than a special case.
+        const total = (hour * 60 + minute - lead + 1440 * 2) % 1440;
+        repeaters.push({
+          kind: 'dose-lead',
+          schedule: () =>
+            scheduleDaily(Math.floor(total / 60), total % 60, zone, {
+              title: `${med.name} in ${humanMinutes(lead)}`,
+              body: `${parentLabel}'s ${med.name} is due at ${slot.time}.`,
+              data: { type: 'dose-lead', medicationId: med.id },
+            }),
+        });
+      }
+    }
+
     const doses = (await list('med_doses', { medication_id: med.id })) as unknown as DoseRow[];
     for (const dose of doses) {
       if (dose.deleted_at) continue;
@@ -316,34 +425,8 @@ async function runDoseAndRefillSync(myMemberId: string | null): Promise<void> {
       if (at <= now || at > windowEnd) continue; // outside the rolling window
       if (dose.given_at || dose.skipped) continue; // already handled
 
-      // Heads-up before the dose. Opt-in: most people want the reminder AT the
-      // time, and a lead reminder with no follow-through is just an extra buzz.
-      for (const lead of prefs.doseLeadMinutes) {
-        const early = new Date(at.getTime() - lead * 60_000);
-        if (early <= now) continue;
-        candidates.push({
-          at: early,
-          schedule: () =>
-            scheduleAt(early, {
-              title: `${med.name} in ${humanMinutes(lead)}`,
-              body: `${parentLabel}'s ${med.name} is due at ${formatDoseTime(
-                dose.scheduled_at,
-                scheduleZone(schedule),
-              )}.`,
-              data: { type: 'dose-lead', doseId: dose.id, medicationId: med.id },
-            }),
-        });
-      }
-
-      candidates.push({
-        at,
-        schedule: () =>
-          scheduleAt(at, {
-            title: `${med.name} is due`,
-            body: `${parentLabel}'s ${med.name}${med.name.endsWith('due') ? '' : ' dose'} is due now.`,
-            data: { type: 'dose-due', doseId: dose.id, medicationId: med.id },
-          }),
-      });
+      // Dose-due and lead reminders are NOT scheduled here any more — they are
+      // daily repeating triggers, created once per slot below. See `repeaters`.
 
       // Nudges after the dose, if it still has not been logged. A list rather
       // than a single value so "30 minutes and again at an hour" is a setting
@@ -353,6 +436,7 @@ async function runDoseAndRefillSync(myMemberId: string | null): Promise<void> {
         if (followUp <= now || followUp > windowEnd) continue;
         candidates.push({
           at: followUp,
+          kind: 'dose-unlogged',
           schedule: () =>
             scheduleAt(followUp, {
               title: `Still waiting on ${med.name}`,
@@ -391,6 +475,7 @@ async function runDoseAndRefillSync(myMemberId: string | null): Promise<void> {
       if (at <= now || at > windowEnd) continue;
       candidates.push({
         at,
+        kind: 'appointment',
         schedule: () =>
           scheduleAt(at, {
             title: `${what} in ${humanMinutes(lead)}`,
@@ -429,17 +514,54 @@ async function runDoseAndRefillSync(myMemberId: string | null): Promise<void> {
 
   await cancelAllOwn();
 
-  // Soonest first: if there are more candidates than the ceiling, the ones
-  // dropped are the furthest away, which is also the ones most likely to be
-  // superseded by the next sync's reschedule before they would have mattered.
+  // --- spending the ceiling ------------------------------------------------
+  // iOS keeps the 64 soonest pending notifications and silently bins the rest,
+  // so this is a budget, and how it is spent decides what a family actually
+  // hears.
+  //
+  // Repeating triggers go first. Each costs one slot and covers every day for
+  // ever, so they are both the cheapest and the most valuable thing here —
+  // and they are what keeps reminders arriving when nobody opens the app.
+  const repeatOrder = [...repeaters].sort((a, b) => PRIORITY[a.kind] - PRIORITY[b.kind]);
+  const repeatDue = repeatOrder.slice(0, MAX_SCHEDULED);
+  for (const r of repeatDue) {
+    await r.schedule();
+  }
+
+  // Whatever is left goes to the one-offs.
+  const budget = Math.max(0, MAX_SCHEDULED - repeatDue.length);
+
+  // Kept in time order, because what arrives next is what matters. But when it
+  // does not all fit, the things dropped are the LEAST important and furthest
+  // away — not simply the furthest. Before this, a heads-up three days out
+  // could survive while the dose reminder behind it was discarded.
   candidates.sort((a, b) => a.at.getTime() - b.at.getTime());
-  const due = candidates.slice(0, MAX_SCHEDULED);
+  let due = candidates;
+  if (candidates.length > budget) {
+    const sacrificial = [...candidates].sort(
+      (a, b) => PRIORITY[b.kind] - PRIORITY[a.kind] || b.at.getTime() - a.at.getTime(),
+    );
+    const dropped = new Set(sacrificial.slice(0, candidates.length - budget));
+    due = candidates.filter((c) => !dropped.has(c));
+  }
+
   for (const c of due) {
     await c.schedule();
   }
 
-  health.scheduled = due.length;
-  if (due.length === 0) {
+  // The horizon the budget actually bought, as opposed to the one asked for.
+  // Worth surfacing: "reminders are set for the next 9 days" is a different
+  // conversation from "reminders are set", and the number moves with how many
+  // medications a family is tracking.
+  const furthest = due.length ? due[due.length - 1].at : null;
+  health.horizonDays = furthest
+    ? Math.max(0, Math.round((furthest.getTime() - now.getTime()) / 86_400_000))
+    : null;
+  health.repeating = repeatDue.length;
+  health.dropped = candidates.length - due.length;
+
+  health.scheduled = repeatDue.length + due.length;
+  if (repeatDue.length + due.length === 0) {
     // Not an error, but the difference between "nothing to remind about" and
     // "broken" is exactly what someone is trying to work out at 2am.
     health.skippedReason =
@@ -449,6 +571,43 @@ async function runDoseAndRefillSync(myMemberId: string | null): Promise<void> {
           : 'no doses or refills fall inside the next few days'
         : null;
   }
+}
+
+/**
+ * A reminder that fires at the same wall-clock time every day, for ever.
+ *
+ * This is what takes iOS's 64-pending ceiling off the table: it costs ONE
+ * pending notification regardless of how many days it covers, where a one-off
+ * per dose costs one per day. It also means reminders keep arriving when the
+ * app has not been opened in weeks, which the rolling-window approach could
+ * never promise.
+ *
+ * `timezone` is the load-bearing argument. Without it iOS interprets the hour
+ * in the DEVICE's zone, so a sibling in California would be reminded at 08:00
+ * Pacific about an 08:00 New York dose — the exact bug G2-27 exists to prevent,
+ * reintroduced through the back door.
+ */
+async function scheduleDaily(
+  hour: number,
+  minute: number,
+  timezone: string | undefined,
+  content: { title: string; body: string; data: Record<string, unknown> },
+): Promise<void> {
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: content.title,
+      body: content.body,
+      data: content.data,
+      sound: Platform.OS === 'ios' ? 'default' : undefined,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+      repeats: true,
+      hour,
+      minute,
+      timezone,
+    },
+  });
 }
 
 async function scheduleAt(
