@@ -7,7 +7,10 @@
 --
 -- Change this one line if you used a different address, then run the whole file.
 
-\set probe_d_email 'rls-probe-d@halmoni-test.dev'
+-- NOTE: the address is written inline below rather than as a \set variable,
+-- because \set and :'name' are psql meta-commands and the Supabase web SQL
+-- editor is not psql — it sends this text straight to the server, so those
+-- lines would fail with a syntax error. Change it on the two marked lines.
 
 -- ---------------------------------------------------------------------------
 -- 1. Add probe D to probe A's family as an ordinary member.
@@ -31,7 +34,7 @@ select
   u.id,
   'Probe D'
 from auth.users u
-where u.email = :'probe_d_email'
+where u.email = 'rls-probe-d@halmoni-test.dev'   -- <<< CHANGE HERE (1 of 2)
   -- Idempotent: running this twice must not create a second membership.
   and not exists (
     select 1 from public.family_members fm2 where fm2.user_id = u.id
@@ -62,4 +65,4 @@ select
 from auth.users u
 join public.family_members fm on fm.user_id = u.id
 join public.families f on f.id = fm.family_id
-where u.email = :'probe_d_email';
+where u.email = 'rls-probe-d@halmoni-test.dev';  -- <<< CHANGE HERE (2 of 2)
