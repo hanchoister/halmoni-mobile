@@ -35,37 +35,34 @@ silent.
 
 ## Creating probe D
 
-This is the one still missing. It needs an email you can confirm, and it has to
-be done by hand because Claude's write access to `auth.*` on production is
-deliberately blocked.
+Two steps and two secrets. Claude cannot do the first step — its write access to
+`auth.*` on production is deliberately blocked.
 
-1. **Make the account.** Sign up in the app (or Supabase → Authentication →
-   Add user) with a fresh address, and confirm it. A plus-address on an inbox
-   you already own is fine — `you+probe-d@…`.
+Probe A is `rls-probe-1789934971-a@halmoni-test.dev`, owner of the family
+`f211d865-c9aa-46bf-b656-b8ac276f97d9` ("RLS probe A"). Probe D goes into that
+same family as an ordinary member.
 
-2. **Get it into probe A's family as a member, not an owner.** Do this through
-   the app's own invite path rather than by inserting a row, so the fixture is
-   created the way a real sibling would be:
-   - sign in as **probe A**, create an invite code;
-   - sign in as **probe D**, accept it.
+**1. Create the account.** Supabase dashboard → Authentication → Users → *Add
+user* → *Create new user*. Use `rls-probe-d@halmoni-test.dev`, set a password,
+and tick **Auto Confirm User** so you do not have to click a confirmation link.
 
-   `accept_invite` creates the membership with `is_owner = false`, which is
-   exactly the state needed.
+**2. Put it in probe A's family.** Paste `scripts/setup-probe-d.sql` into the
+SQL editor and run it. It looks the family up from probe A's own membership
+rather than taking a pasted id, so a typo cannot silently put probe D in the
+wrong family — which would make every escalation probe pass for the wrong
+reason. It is idempotent, and it ends with a verification query.
 
-3. **Check the fixture.** Run this read-only query and confirm one row comes
-   back, with `is_owner = false`, `deleted_at` null, and the same `family_id`
-   as probe A:
+Expect one row reading `in_probe_a_family = true`, `is_owner = false`,
+`removed = false`.
 
-   ```sql
-   select fm.id, fm.family_id, fm.is_owner, fm.deleted_at, u.email
-   from public.family_members fm
-   join auth.users u on u.id = fm.user_id
-   where u.email in ('<probe A email>', '<probe D email>')
-   order by u.email;
-   ```
+*Doing it through the app's invite flow instead (sign in as A, mint a code, sign
+in as D, accept) produces the identical state and is a little more faithful to
+how a real sibling joins. It is just slower, and the state is what the suite
+checks.*
 
-4. **Add two GitHub secrets** — Settings → Secrets and variables → Actions:
-   `PROBE_D_EMAIL` and `PROBE_D_PASSWORD`. The workflow already reads them.
+**3. Add two GitHub secrets** — repo → Settings → Secrets and variables →
+Actions: `PROBE_D_EMAIL` and `PROBE_D_PASSWORD`. The workflow already reads
+them.
 
 Until those secrets exist, the suite runs and reports:
 
@@ -75,6 +72,12 @@ Until those secrets exist, the suite runs and reports:
 ```
 
 which is the intended behaviour: it does not pass, and it does not pretend to.
+
+### Housekeeping while you are in there
+
+`rls-probe-1789934877-a@halmoni-test.dev` is an orphan from a first attempt at
+provisioning — it has no family membership at all and nothing references it.
+Safe to delete, and worth deleting so it is never mistaken for a live fixture.
 
 ## What probe D actually tests
 
