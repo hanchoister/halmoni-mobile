@@ -56,6 +56,39 @@ function record(area, name, outcome, detail) {
   if (outcome === 'LEAK' || outcome === 'ERROR') failures++;
 }
 
+/**
+ * Why a write was refused, not merely that it was.
+ *
+ * A probe that fails for the wrong reason is worse than no probe: it reports
+ * "repelled" and is counted as evidence, while never having reached the policy
+ * it exists to test. That happened here — a bare `parents` insert is rejected
+ * by a CHECK constraint with 23514 before RLS is consulted, so the probe looked
+ * like a pass and proved nothing.
+ *
+ * So the outcome is decided by the error code:
+ *   - 2xx                     the row was written. A leak, unambiguously.
+ *   - 42501, or 401/403       row-level security refused it. The real pass.
+ *   - anything else           the request died before the policy mattered.
+ *                             INCONCLUSIVE, which shows in the summary rather
+ *                             than quietly inflating the repelled count.
+ */
+function classifyWrite(res) {
+  const code = res.json?.code ?? '';
+  const detail = `HTTP ${res.status}${code ? ` ${code}` : ''}`;
+
+  if (res.status >= 200 && res.status < 300) {
+    return ['LEAK', `${detail} — A ROW WAS WRITTEN WITHOUT A LOGIN`];
+  }
+  if (code === '42501' || res.status === 401 || res.status === 403) {
+    return ['REPELLED', `${detail} row-level security`];
+  }
+  return [
+    'INCONCLUSIVE',
+    `${detail} — refused before RLS was reached (${res.json?.message ?? 'no message'}). ` +
+      'Fix the payload; this probe is proving nothing.',
+  ];
+}
+
 async function rest(path, { token, method = 'GET', body, prefer } = {}) {
   const headers = { apikey: KEY, 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -308,30 +341,70 @@ async function main() {
     noConsent.status === 201 ? 'LEAK' : 'REPELLED', `HTTP ${noConsent.status} ${noConsent.json?.code ?? ''}`);
 
   // -- 6. Anonymous access ---------------------------------------------------
-  // No token at all: the publishable key alone.
-  for (const table of ['parents', 'medications', 'med_doses', 'families', 'family_members']) {
+  //
+  // No token at all: the publishable key alone, which ships inside the app
+  // binary and sits in eas.json, so treat it as public knowledge.
+  //
+  // Rewritten 2026-10-01 for G2-60. Two things changed. The read list is wider,
+  // because the old five tables were not where the interesting data had arrived
+  // (notes and audit_log both carry free text about a named person). And the
+  // write probe is no longer one table with a tolerated outcome: every policy in
+  // `public` was scoped `TO public` until migration 19, which includes `anon`,
+  // so the question "can an unauthenticated caller write to the health record"
+  // deserved more than a single hygiene check on a metrics table.
+  for (const table of [
+    'parents', 'medications', 'med_doses', 'families', 'family_members',
+    'notes', 'appointments', 'symptoms', 'visit_notes', 'audit_log',
+    'terms_acceptances', 'parent_consent_events',
+  ]) {
     const r = await rest(`${table}?select=id&limit=1`, {});
     const leaked = Array.isArray(r.json) && r.json.length > 0;
     record('anon', `read ${table}`, leaked ? 'LEAK' : 'REPELLED',
       leaked ? `${r.json.length} row(s) without any login` : `HTTP ${r.status}, 0 rows`);
   }
 
-  // evergreen_metrics carries an INSERT policy for the anon role with a WITH
-  // CHECK of `true` (G2-47). Anyone holding the publishable key — which ships
-  // in the app binary and is therefore public — can write rows. It holds no
-  // health data, so this is hygiene rather than exposure, but it is unbounded
-  // and it lives in the same database as the health record.
-  // No return=representation here, deliberately. Asking PostgREST to hand the
-  // row back requires SELECT as well, and anon has no SELECT policy — so the
-  // insert gets refused for the wrong reason and the probe reports a false
-  // "repelled". The honest test writes and asks nothing back.
-  const anonWrite = await rest('evergreen_metrics', {
-    method: 'POST',
-    body: { install_id: crypto.randomUUID(), iso_week: '2026-W38' },
-  });
-  record('anon', 'write evergreen_metrics',
-    (anonWrite.status === 201 || anonWrite.status === 204) ? 'OPEN-BY-DESIGN' : 'REPELLED',
-    `HTTP ${anonWrite.status} ${anonWrite.json?.code ?? ''}`);
+  // Anonymous writes into the health record.
+  //
+  // No `return=representation`, deliberately. Asking PostgREST to hand the row
+  // back needs SELECT as well, so an insert that SUCCEEDED could be reported as
+  // refused — failing for the wrong reason and reading as safe. The honest test
+  // writes and asks nothing back, then treats any 2xx as a leak.
+  //
+  // The payloads are intentionally minimal and syntactically valid: a 400 for a
+  // malformed body would also read as "repelled" and prove nothing. A 401/403,
+  // or a 42501 row-level-security violation, is the outcome being tested for.
+  //
+  // `parents` carries the full consent block deliberately. Two CHECK
+  // constraints (parents_consent_required, parents_consent_shape) reject a bare
+  // insert with 23514 BEFORE the policy is consulted — so the obvious payload
+  // comes back 400 and reads as "repelled" while having tested nothing. Found
+  // on 2026-10-01 by running exactly that probe and reading the error code
+  // rather than the status class. With the consent columns present it reaches
+  // RLS and returns 42501, which is the answer being looked for.
+  const anonWrites = [
+    ['medications', { family_id: crypto.randomUUID(), name: 'probe' }],
+    ['notes', { family_id: crypto.randomUUID(), body: 'probe' }],
+    ['parents', {
+      family_id: crypto.randomUUID(),
+      name: 'probe',
+      consent_basis: 'parent_agreed',
+      consent_attested_at: new Date().toISOString(),
+      consent_attested_by: crypto.randomUUID(),
+      consent_notice_version: 'probe',
+      consent_sharing_at: new Date().toISOString(),
+    }],
+    ['audit_log', { family_id: crypto.randomUUID(), action: 'probe' }],
+    // G2-51 regression fixture. This one DID return 201 on 2026-09-20 with
+    // nothing but the publishable key, before migration 17 revoked the grant and
+    // dropped the policy. It is kept here so that if anyone re-opens it, the
+    // suite says so — it used to be tolerated as OPEN-BY-DESIGN, and that is now
+    // wrong.
+    ['evergreen_metrics', { install_id: crypto.randomUUID(), iso_week: '2026-W38' }],
+  ];
+  for (const [table, body] of anonWrites) {
+    const w = await rest(table, { method: 'POST', body });
+    record('anon', `write ${table}`, ...classifyWrite(w));
+  }
 
   // ---------------------------------------------------------------------------
 

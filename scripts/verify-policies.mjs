@@ -29,7 +29,8 @@ import { existsSync, readFileSync } from 'node:fs';
 export const POLICY_SQL = `
 select coalesce(json_agg(json_build_object(
   'schema', schemaname, 'table', tablename, 'name', policyname, 'cmd', cmd,
-  'permissive', permissive, 'using', coalesce(qual, ''), 'check', coalesce(with_check, '')
+  'permissive', permissive, 'using', coalesce(qual, ''), 'check', coalesce(with_check, ''),
+  'roles', array_to_string(roles, ',')
 ) order by schemaname, tablename, policyname), '[]')
 from pg_policies where schemaname in ('public', 'storage');
 `;
@@ -77,6 +78,61 @@ select coalesce(json_agg(json_build_object(
 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
 where n.nspname = 'public';
 `;
+
+// Run verbatim against production alongside POLICY_SQL. G2-60: policies are
+// only half of the answer — a role also needs a GRANT to reach a table at all,
+// and `pg_default_acl` decides what the NEXT table will grant. The default ACLs
+// are the part that made this regress-by-default: they carried `anon=arwdDxtm`,
+// so every new table was granted to anon automatically.
+export const GRANT_SQL = `
+select json_build_object(
+  'anonTableGrants', coalesce((
+    select json_agg(json_build_object('table', table_name, 'privilege', privilege_type)
+                    order by table_name, privilege_type)
+    from information_schema.role_table_grants
+    where grantee = 'anon' and table_schema = 'public'), '[]'::json),
+  'anonDefaultAcls', coalesce((
+    select json_agg(json_build_object('role', pg_get_userbyid(d.defaclrole),
+                                      'objtype', d.defaclobjtype::text,
+                                      'acl', array_to_string(d.defaclacl, ' '))
+                    order by pg_get_userbyid(d.defaclrole), d.defaclobjtype::text)
+    from pg_default_acl d
+    join pg_namespace n on n.oid = d.defaclnamespace
+    where n.nspname = 'public'
+      and array_to_string(d.defaclacl, ' ') like '%anon=%'), '[]'::json)
+) ;
+`;
+
+/**
+ * G2-60. Nothing may reach a `public` table as `anon`.
+ *
+ * Both halves matter. The grants are today's state; the default ACLs are
+ * tomorrow's, and leaving those alone is how the problem comes back on its own
+ * the next time anyone adds a table.
+ */
+export function checkGrants(grants) {
+  const problems = [];
+  if (!grants) return problems;
+
+  const tableGrants = grants.anonTableGrants ?? [];
+  if (tableGrants.length > 0) {
+    const tables = [...new Set(tableGrants.map((g) => g.table))];
+    problems.push(
+      `anon holds ${tableGrants.length} grant(s) on ${tables.length} public table(s): ${tables.join(', ')}. ` +
+        'The publishable key ships in the app binary, so anon is public. Migration 19 revokes these (G2-60).',
+    );
+  }
+
+  for (const d of grants.anonDefaultAcls ?? []) {
+    problems.push(
+      `default privileges for role ${d.role} on ${d.objtype} in public still grant anon (${d.acl}). ` +
+        'The next table created here would be granted to anon automatically, which is how this regresses ' +
+        'without anyone making a mistake (G2-60, migration 19 section 4).',
+    );
+  }
+
+  return problems;
+}
 
 // Functions that live in the `extensions` schema on Supabase. A function whose
 // search_path is pinned to 'public' cannot see them unqualified — which is
@@ -210,6 +266,43 @@ export function checkPolicies(policies) {
     }
   }
 
+  // G2-60: a policy naming no role is `TO public`, and `public` includes `anon`.
+  // Nothing leaked when this was found — every predicate dereferenced
+  // auth.uid(), which is NULL for anon — but that made confidentiality depend on
+  // all 66 predicates being written correctly forever, and one had already not
+  // been (evergreen_metrics_insert_anon, WITH CHECK true, HTTP 201 with nothing
+  // but the publishable key). Scoped to `authenticated`, an unauthenticated
+  // request is refused by role before any predicate runs, so the next sloppy
+  // predicate fails closed.
+  for (const p of policies) {
+    const roles = (p.roles ?? '').split(',').map((r) => r.trim()).filter(Boolean);
+    const reachesAnon = roles.length === 0 || roles.includes('public') || roles.includes('anon');
+    if (!reachesAnon) continue;
+
+    const scope = roles.length ? roles.join('+') : 'no role (= public)';
+
+    // storage.objects is owned by supabase_storage_admin, so migration 19 may
+    // not have had the privilege to re-scope these. A family-scoped one is
+    // untidy rather than exposed, so it is reported every run as a note instead
+    // of being silently allowed. One that is NOT family-scoped is a real hole.
+    if (p.schema === 'storage') {
+      const text = `${p.using} ${p.check}`;
+      if (/is_family_member/.test(text)) {
+        notes.push(
+          `storage.${p.table}: "${p.name}" [${p.cmd}] is still TO ${scope}, but is family-scoped via ` +
+            'is_family_member so anon is refused by the predicate. Migration 19 could not re-scope it ' +
+            '(ALTER POLICY needs table ownership). Untidy, not exposed (G2-60).',
+        );
+        continue;
+      }
+    }
+
+    problems.push(
+      `${p.schema}.${p.table}: policy "${p.name}" [${p.cmd}] is scoped TO ${scope}, which reaches anon. ` +
+        'Scope it TO authenticated (G2-60).',
+    );
+  }
+
   // G2-35: every policy touching the share-kits bucket must be family-scoped.
   for (const p of policies.filter((x) => x.schema === 'storage')) {
     const text = `${p.using} ${p.check}`;
@@ -221,6 +314,17 @@ export function checkPolicies(policies) {
   }
 
   return { problems, notes };
+}
+
+function loadGrants() {
+  const i = process.argv.indexOf('--grants-from-file');
+  if (i !== -1) return JSON.parse(readFileSync(process.argv[i + 1], 'utf8'));
+  if (process.argv.includes('--from-file')) return null; // offline policy-only run
+
+  const out = execFileSync(findPsql(), [process.env.SUPABASE_DB_URL, '-At', '-v', 'ON_ERROR_STOP=1', '-c', GRANT_SQL], {
+    encoding: 'utf8',
+  });
+  return JSON.parse(out.trim());
 }
 
 function loadFunctions() {
@@ -240,10 +344,17 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const fnProblems = functions ? checkFunctions(functions) : [];
   if (!functions) notes.push('function checks skipped: offline --from-file run without --functions-from-file.');
 
-  const all = [...problems, ...fnProblems];
+  const grants = loadGrants();
+  const grantProblems = grants ? checkGrants(grants) : [];
+  if (!grants) notes.push('grant checks skipped: offline --from-file run without --grants-from-file.');
+
+  const all = [...problems, ...fnProblems, ...grantProblems];
   for (const n of notes) console.log(`note: ${n}`);
   if (all.length === 0) {
-    console.log('OK: production policies match the migrations, and the function invariants hold.');
+    console.log(
+      'OK: production policies match the migrations, the function invariants hold, ' +
+        'and nothing reaches a public table as anon.',
+    );
     process.exit(0);
   }
   console.log(`\nFAIL: ${all.length} problem(s)`);
