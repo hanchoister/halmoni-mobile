@@ -17,6 +17,7 @@ import { deviceZone, zoneSupported } from '@/lib/dose-plan';
 import { useDemoMode } from '@/lib/demo-mode';
 import { useFamily } from '@/lib/family';
 import { useMe } from '@/lib/me';
+import { getPrefsStorageNote } from '@/lib/notification-prefs';
 import { getNotificationHealth, type NotificationHealth } from '@/lib/notifications';
 import { useSyncStatus } from '@/lib/sync/state';
 import { palette, spacing } from '@/lib/theme';
@@ -66,6 +67,7 @@ export default function DiagnosticsScreen() {
   const { me } = useMe();
   const [notif, setNotif] = useState<NotificationHealth | null>(null);
   const [rows, setRows] = useState<string | null>(null);
+  const [storageNote, setStorageNote] = useState<string | null>(null);
   const [queueError, setQueueError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -91,6 +93,7 @@ export default function DiagnosticsScreen() {
           setQueue({ pending: total?.n ?? 0, quarantined: quarantined?.n ?? 0 });
           setRows(counts.join(' · '));
           setNotif(getNotificationHealth());
+          setStorageNote(getPrefsStorageNote());
         }
       } catch (e) {
         if (!cancelled) setQueueError(e instanceof Error ? e.message : String(e));
@@ -170,6 +173,11 @@ export default function DiagnosticsScreen() {
         <Row label="Last checked" value={since(notif?.lastRunAt ?? null)} />
         {notif?.skippedReason && <Row label="Nothing set because" value={notif.skippedReason} />}
         {notif?.lastError && <Row label="Last error" value={notif.lastError} />}
+        {/* Settings live in the keychain so they survive a reinstall. If that
+            ever fails we fall back to ordinary storage, and this is where that
+            shows — a preference that silently fails to save is the same shape
+            of bug as a reminder that silently fails to schedule. */}
+        <Row label="Settings saved to" value={storageNote ?? 'keychain'} />
       </Card>
 
       <Card>
@@ -217,6 +225,7 @@ export default function DiagnosticsScreen() {
             `reminders permission ${notif?.permission ?? '?'} · set ${notif?.scheduled ?? '?'} · checked ${since(notif?.lastRunAt ?? null)}`,
             notif?.skippedReason ? `reminders skipped: ${notif.skippedReason}` : null,
             notif?.lastError ? `reminders error: ${notif.lastError}` : null,
+            `settings storage ${storageNote ?? 'keychain'}`,
             `family ${familyId?.slice(0, 8) ?? 'none'} · member ${me?.id?.slice(0, 8) ?? 'none'}`,
             `local rows ${rows ?? '?'}`,
           ].filter(Boolean);

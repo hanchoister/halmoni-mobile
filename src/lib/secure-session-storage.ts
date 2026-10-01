@@ -70,7 +70,15 @@ async function readCount(key: string): Promise<number> {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-export const SecureSessionStorage = {
+/**
+ * A generic keychain-backed key/value store.
+ *
+ * Named for sessions because that was its first caller, but nothing in it is
+ * session-specific — it is chunked string storage with a web fallback. Exported
+ * under both names so preferences can use it (G2-58) without a reader
+ * concluding that notification settings are somehow part of the auth session.
+ */
+export const SecureKeyValueStore = {
   async getItem(key: string): Promise<string | null> {
     try {
       const count = await readCount(key);
@@ -117,3 +125,6 @@ export const SecureSessionStorage = {
     await store.deleteItemAsync(countKey(key));
   },
 };
+
+/** The original name, kept so the Supabase auth wiring is untouched. */
+export const SecureSessionStorage = SecureKeyValueStore;
