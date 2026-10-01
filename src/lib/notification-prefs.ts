@@ -21,9 +21,16 @@
  *
  * `public.notification_preferences` does exist on production, but it is left
  * over from the retired web app — booleans for email and push per category —
- * so adopting it would mean a migration, not a reuse. The cost of staying local
- * is stated plainly in the UI: a reinstall resets to defaults. This module is
- * the single place that would change if that trade is ever revisited.
+ * so adopting it would mean a migration, not a reuse.
+ *
+ * **Storage: the keychain, not AsyncStorage (2026-09-30).** Local used to mean
+ * "gone after a reinstall", which is a poor trade for settings someone tuned
+ * carefully. Keychain entries survive app deletion on iOS, so a reinstall now
+ * finds the settings still there. Two honest caveats: it is Apple's behaviour
+ * rather than a guarantee we control, and it still does not follow you to a NEW
+ * phone — setting up a new phone is at least the moment people expect to redo
+ * settings. There is no health data here, only preference flags, so the
+ * keychain is being used for durability rather than for secrecy.
  *
  * ---------------------------------------------------------------------------
  * 2. "Only my shifts" still notifies when NOBODY is on duty.
@@ -49,7 +56,26 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { SecureKeyValueStore } from '@/lib/secure-session-storage';
+
 const STORAGE_KEY = 'halmoni.notification-prefs.v2';
+
+// Where settings used to live. Read once, to carry forward anyone who set
+// preferences before the move, then cleared so there is only one source.
+const LEGACY_ASYNC_KEYS = ['halmoni.notification-prefs.v2', 'halmoni.notification-prefs.v1'];
+
+/**
+ * Whether the last write actually reached the keychain.
+ *
+ * A preference that silently fails to save is the same shape of bug as a
+ * notification that silently fails to schedule — the screen says one thing and
+ * the device does another. Surfaced on the diagnostics REMINDERS card.
+ */
+let storageNote: string | null = null;
+
+export function getPrefsStorageNote(): string | null {
+  return storageNote;
+}
 
 /** When a category is allowed to interrupt. */
 export type Cadence =
@@ -112,11 +138,9 @@ export const DEFAULT_PREFS: NotificationPrefs = {
   handoffs: 'always',
 };
 
-/** The offsets offered in the UI. Not a limit on what the model can store. */
-export const DOSE_LEAD_CHOICES = [15, 30, 60, 120];
-export const DOSE_FOLLOW_UP_CHOICES = [15, 30, 60];
-export const REFILL_DAY_CHOICES = [14, 7, 5, 3, 2, 1];
-export const APPOINTMENT_LEAD_CHOICES = [2880, 1440, 240, 120, 60, 30];
+// The fixed menus that used to live here are gone: the UI now asks for a
+// number and a unit, so what counts as a useful lead time is the caregiver's
+// call rather than a list someone guessed in advance.
 
 export const CADENCE_LABELS: Record<Cadence, string> = {
   always: 'Every time',
@@ -179,17 +203,48 @@ function coerce(value: unknown): NotificationPrefs {
 
 export async function loadPrefs(): Promise<NotificationPrefs> {
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return { ...DEFAULT_PREFS };
-    return coerce(JSON.parse(raw));
-  } catch {
-    // A corrupt or unreadable preference must never mean "no reminders".
-    return { ...DEFAULT_PREFS };
+    const raw = await SecureKeyValueStore.getItem(STORAGE_KEY);
+    if (raw) {
+      storageNote = null;
+      return coerce(JSON.parse(raw));
+    }
+  } catch (err) {
+    storageNote = `keychain read failed: ${err instanceof Error ? err.message : String(err)}`;
   }
+
+  // Nothing in the keychain. Either this is a fresh install, or it is someone
+  // who set their preferences before the move — carry those forward rather than
+  // silently resetting them, which is the exact complaint this change fixes.
+  for (const key of LEGACY_ASYNC_KEYS) {
+    try {
+      const legacy = await AsyncStorage.getItem(key);
+      if (!legacy) continue;
+      const migrated = coerce(JSON.parse(legacy));
+      await savePrefs(migrated);
+      await AsyncStorage.removeItem(key);
+      return migrated;
+    } catch {
+      // A broken legacy value is not worth failing over; fall through to the
+      // defaults, which are safe by construction.
+    }
+  }
+
+  return { ...DEFAULT_PREFS };
 }
 
 export async function savePrefs(prefs: NotificationPrefs): Promise<void> {
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
+  const json = JSON.stringify(prefs);
+  try {
+    await SecureKeyValueStore.setItem(STORAGE_KEY, json);
+    storageNote = null;
+    return;
+  } catch (err) {
+    storageNote = `keychain write failed: ${err instanceof Error ? err.message : String(err)}`;
+  }
+  // Keychain unavailable. Fall back rather than lose the setting — a
+  // preference that vanishes on save is worse than one that does not survive a
+  // reinstall, and the diagnostics card now says which happened.
+  await AsyncStorage.setItem(STORAGE_KEY, json);
 }
 
 /** Add or remove one offset, keeping the list sorted and deduplicated. */

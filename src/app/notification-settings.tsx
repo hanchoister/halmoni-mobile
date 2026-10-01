@@ -12,19 +12,19 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/card';
+import {
+  DurationPicker,
+  formatDuration,
+  type DurationUnit,
+} from '@/components/ui/duration-picker';
 import { Screen } from '@/components/ui/screen';
 import { useMe } from '@/lib/me';
 import {
-  APPOINTMENT_LEAD_CHOICES,
   CADENCES,
   CADENCE_HELP,
   CADENCE_LABELS,
   DEFAULT_PREFS,
-  DOSE_FOLLOW_UP_CHOICES,
-  DOSE_LEAD_CHOICES,
-  REFILL_DAY_CHOICES,
   humanDays,
-  humanMinutes,
   loadPrefs,
   savePrefs,
   toggleOffset,
@@ -56,36 +56,65 @@ function Chip({
   );
 }
 
-/** A row of multi-select offsets — "which of these, any number". */
-function Offsets({
+/**
+ * The durations chosen for one kind of reminder, plus a way to add another.
+ *
+ * Values are chips you can tap to remove, rather than a fixed menu of options:
+ * what counts as a useful lead time is a fact about someone's morning, not
+ * something this screen can enumerate in advance.
+ */
+function Durations({
   title,
-  choices,
-  selected,
-  format,
-  onToggle,
+  values,
+  units,
+  pickerTitle,
+  onAdd,
+  onRemove,
   emptyNote,
+  format,
 }: {
   title: string;
-  choices: number[];
-  selected: number[];
-  format: (n: number) => string;
-  onToggle: (value: number) => void;
+  values: number[];
+  units: DurationUnit[];
+  pickerTitle: string;
+  onAdd: (minutes: number) => void;
+  onRemove: (value: number) => void;
   emptyNote: string;
+  format: (value: number) => string;
 }) {
+  const [picking, setPicking] = useState(false);
   return (
     <View style={{ marginTop: spacing.md }}>
       <Text style={styles.offsetTitle}>{title}</Text>
       <View style={styles.wrap}>
-        {choices.map((c) => (
-          <Chip
-            key={c}
-            label={format(c)}
-            selected={selected.includes(c)}
-            onPress={() => onToggle(c)}
-          />
+        {values.map((v) => (
+          <Pressable
+            key={v}
+            onPress={() => onRemove(v)}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${format(v)}`}
+            style={[styles.chip, styles.chipOn]}>
+            <Text style={[styles.chipLabel, styles.chipLabelOn]}>{format(v)}  ×</Text>
+          </Pressable>
         ))}
+        <Pressable
+          onPress={() => setPicking(true)}
+          accessibilityRole="button"
+          style={styles.chip}>
+          <Text style={styles.chipLabel}>+ Add</Text>
+        </Pressable>
       </View>
-      {selected.length === 0 && <Text style={styles.help}>{emptyNote}</Text>}
+      {values.length === 0 && <Text style={styles.help}>{emptyNote}</Text>}
+      <DurationPicker
+        visible={picking}
+        units={units}
+        title={pickerTitle}
+        onCancel={() => setPicking(false)}
+        onAdd={(mins) => {
+          setPicking(false);
+          onAdd(mins);
+        }}
+      />
     </View>
   );
 }
@@ -189,20 +218,26 @@ export default function NotificationSettingsScreen() {
             value={prefs.doses}
             options={CADENCES}
             onChange={(doses) => update({ doses })}>
-            <Offsets
+            <Durations
               title="Also remind me before"
-              choices={DOSE_LEAD_CHOICES}
-              selected={prefs.doseLeadMinutes}
-              format={humanMinutes}
-              onToggle={(v) => update({ doseLeadMinutes: toggleOffset(prefs.doseLeadMinutes, v) })}
+              values={prefs.doseLeadMinutes}
+              units={['min', 'hrs']}
+              pickerTitle="Remind me before a dose"
+              format={formatDuration}
+              onAdd={(v) => update({ doseLeadMinutes: toggleOffset(prefs.doseLeadMinutes, v) })}
+              onRemove={(v) => update({ doseLeadMinutes: toggleOffset(prefs.doseLeadMinutes, v) })}
               emptyNote="Just the reminder at dose time."
             />
-            <Offsets
+            <Durations
               title="Nudge me after, if it is still not logged"
-              choices={DOSE_FOLLOW_UP_CHOICES}
-              selected={prefs.doseFollowUpMinutes}
-              format={humanMinutes}
-              onToggle={(v) =>
+              values={prefs.doseFollowUpMinutes}
+              units={['min', 'hrs']}
+              pickerTitle="Nudge me after a dose"
+              format={formatDuration}
+              onAdd={(v) =>
+                update({ doseFollowUpMinutes: toggleOffset(prefs.doseFollowUpMinutes, v) })
+              }
+              onRemove={(v) =>
                 update({ doseFollowUpMinutes: toggleOffset(prefs.doseFollowUpMinutes, v) })
               }
               emptyNote="No follow-up — you will not be told if a dose goes unlogged."
@@ -215,12 +250,19 @@ export default function NotificationSettingsScreen() {
             value={prefs.refills}
             options={CADENCES}
             onChange={(refills) => update({ refills })}>
-            <Offsets
+            {/* Refills hang off a DATE with no time of day, so minutes and
+                hours are meaningless here — the picker offers days and weeks,
+                and the stored value stays in days. */}
+            <Durations
               title="Warn me this far ahead"
-              choices={REFILL_DAY_CHOICES}
-              selected={prefs.refillDays}
+              values={prefs.refillDays}
+              units={['days', 'weeks']}
+              pickerTitle="Warn me before a refill is due"
               format={humanDays}
-              onToggle={(v) => update({ refillDays: toggleOffset(prefs.refillDays, v) })}
+              onAdd={(mins) =>
+                update({ refillDays: toggleOffset(prefs.refillDays, Math.max(1, Math.round(mins / 1440))) })
+              }
+              onRemove={(v) => update({ refillDays: toggleOffset(prefs.refillDays, v) })}
               emptyNote="No refill warnings, even though refills are switched on."
             />
           </Group>
@@ -231,12 +273,16 @@ export default function NotificationSettingsScreen() {
             value={prefs.appointments}
             options={CADENCES}
             onChange={(appointments) => update({ appointments })}>
-            <Offsets
+            <Durations
               title="Remind me this far ahead"
-              choices={APPOINTMENT_LEAD_CHOICES}
-              selected={prefs.appointmentLeadMinutes}
-              format={humanMinutes}
-              onToggle={(v) =>
+              values={prefs.appointmentLeadMinutes}
+              units={['min', 'hrs', 'days']}
+              pickerTitle="Remind me before an appointment"
+              format={formatDuration}
+              onAdd={(v) =>
+                update({ appointmentLeadMinutes: toggleOffset(prefs.appointmentLeadMinutes, v) })
+              }
+              onRemove={(v) =>
                 update({ appointmentLeadMinutes: toggleOffset(prefs.appointmentLeadMinutes, v) })
               }
               emptyNote="No appointment reminders, even though appointments are switched on."
