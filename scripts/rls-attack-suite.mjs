@@ -25,7 +25,12 @@
 //   PROBE_B_EMAIL=… PROBE_B_PASSWORD=… \
 //   node scripts/rls-attack-suite.mjs
 //
-// The two accounts must already exist and be confirmed. Creating them is a
+// PROBE_C_* (a removed member) and PROBE_D_* (a live non-owner in probe A's
+// family) are optional but expected in CI — without D, the privilege-escalation
+// trigger is not verified on that run and the suite says so (G2-54). See
+// docs/security-probes.md.
+//
+// The accounts must already exist and be confirmed. Creating them is a
 // deliberate manual step: this script never provisions accounts on production
 // by itself, because a script that can create users is a script that can be
 // run carelessly against real data.
@@ -221,7 +226,13 @@ async function main() {
     });
     const wasAlreadyOwner = selfRow.json[0].is_owner === true;
     if (wasAlreadyOwner) {
-      record('escalate', 'self-promote to owner', 'INCONCLUSIVE', 'probe already owns its family');
+      // Expected, and not a gap any more: probe A owns its family by
+      // construction, so it cannot test whether a NON-owner can promote
+      // themselves. Probe D exists for exactly that and is the conclusive one
+      // (G2-54). Kept rather than deleted because an owner's PATCH of its own
+      // is_owner still has to not error.
+      record('escalate', 'self-promote to owner', 'INCONCLUSIVE',
+        'probe A owns its family by construction — see the probe D escalation checks');
     } else if (promote.status === 200 && promote.json?.[0]?.is_owner === true) {
       record('escalate', 'self-promote to owner', 'LEAK', 'a member promoted themselves');
     } else {
@@ -404,6 +415,121 @@ async function main() {
   for (const [table, body] of anonWrites) {
     const w = await rest(table, { method: 'POST', body });
     record('anon', `write ${table}`, ...classifyWrite(w));
+  }
+
+  // -- 7. Escalation from inside a family, as a live non-owner (G2-54) -------
+  //
+  // THE GAP THIS CLOSES
+  //
+  // The escalation check in section 4 has always been inconclusive, and
+  // structurally so. Probe A owns its family, so "can a member promote
+  // themselves to owner" cannot be asked with A's token — an owner setting
+  // is_owner = true is a no-op, not an escalation. Probe C cannot be used
+  // either: it is deliberately pinned in the REMOVED state as the migration-14
+  // regression fixture, and un-removing it would destroy that fixture.
+  //
+  // So the one thing standing between a member and ownership of a family —
+  // the enforce_owner_change_by_owner trigger, which is what actually stops it,
+  // since "members update" has no WITH CHECK — was confirmed by hand once, on
+  // 2026-09-20, and nothing has repeated that check since. This repeats it.
+  //
+  // Probe D is a LIVE, NON-OWNER member of probe A's family. See
+  // docs/security-probes.md for how to create it; the suite never provisions
+  // accounts itself.
+  if (process.env.PROBE_D_EMAIL && process.env.PROBE_D_PASSWORD) {
+    const D = await signIn(process.env.PROBE_D_EMAIL, process.env.PROBE_D_PASSWORD);
+
+    // Verify the fixture before trusting any result. If D were an owner, or in
+    // another family, or removed, every probe below would "pass" for the wrong
+    // reason — which is the failure mode section 6 was rewritten to avoid.
+    const mine = await rest(
+      `family_members?user_id=eq.${D.userId}&select=id,family_id,is_owner,deleted_at`,
+      { token: D.token },
+    );
+    const row = Array.isArray(mine.json) ? mine.json[0] : null;
+    const fixtureOk =
+      row && row.family_id === familyA && row.is_owner === false && !row.deleted_at;
+
+    if (!fixtureOk) {
+      const why = !row
+        ? 'probe D has no visible membership row'
+        : row.family_id !== familyA
+          ? `probe D is in a different family (${String(row.family_id).slice(0, 8)}… not A's)`
+          : row.is_owner
+            ? 'probe D owns its family — it must be a NON-owner'
+            : 'probe D is in the removed state';
+      record('escalate-d', 'fixture state', 'INCONCLUSIVE', why);
+    } else {
+      const memberIdD = row.id;
+
+      // 7a. The whole point: a live non-owner promoting itself.
+      const selfPromote = await rest(`family_members?id=eq.${memberIdD}`, {
+        token: D.token, method: 'PATCH', body: { is_owner: true },
+        prefer: 'return=representation',
+      });
+      // Re-read rather than trusting the response. A PATCH that matches no rows
+      // returns 200 with an empty array, and reading that as "refused" would be
+      // right by accident; reading the row back says what actually happened.
+      const after = await rest(
+        `family_members?id=eq.${memberIdD}&select=is_owner`,
+        { token: D.token },
+      );
+      const nowOwner = after.json?.[0]?.is_owner === true;
+      record('escalate-d', 'non-owner promotes itself to owner',
+        nowOwner ? 'LEAK' : 'REPELLED',
+        `HTTP ${selfPromote.status}, is_owner is now ${String(after.json?.[0]?.is_owner)}`);
+
+      // 7b. Promoting itself by rewriting the OWNER's row instead — the same
+      // escalation from the other end. "members update" is scoped to
+      // user_id = auth.uid(), so this should match nothing at all.
+      const grabOwner = await rest(`family_members?id=eq.${memberIdA}`, {
+        token: D.token, method: 'PATCH', body: { is_owner: false },
+        prefer: 'return=representation',
+      });
+      const ownerRow = await rest(
+        `family_members?id=eq.${memberIdA}&select=is_owner`,
+        { token: D.token },
+      );
+      const ownerDemoted = ownerRow.json?.[0]?.is_owner === false;
+      record('escalate-d', "demote the family's owner",
+        ownerDemoted ? 'LEAK' : 'REPELLED',
+        `HTTP ${grabOwner.status}, owner is_owner is now ${String(ownerRow.json?.[0]?.is_owner)}`);
+
+      // 7c. Removing the owner outright. Migration 15 made deleted_at
+      // server-only, so this should be refused by the trigger rather than by
+      // the policy — a different mechanism from 7b, and worth its own probe.
+      const removeOwner = await rest(`family_members?id=eq.${memberIdA}`, {
+        token: D.token, method: 'PATCH', body: { deleted_at: new Date().toISOString() },
+      });
+      const ownerStill = await rest(
+        `family_members?id=eq.${memberIdA}&select=deleted_at`,
+        { token: D.token },
+      );
+      const ownerRemoved = Boolean(ownerStill.json?.[0]?.deleted_at);
+      record('escalate-d', 'remove the family owner',
+        ownerRemoved ? 'LEAK' : 'REPELLED',
+        `HTTP ${removeOwner.status}, owner deleted_at is ${String(ownerStill.json?.[0]?.deleted_at)}`);
+
+      // 7d. Renaming the family. An owner may; a member may not.
+      const rename = await rest(`families?id=eq.${familyA}`, {
+        token: D.token, method: 'PATCH', body: { name: 'probe-d-rename' },
+        prefer: 'return=representation',
+      });
+      const renamed = Array.isArray(rename.json) && rename.json.length > 0;
+      record('escalate-d', 'rename the family as a non-owner',
+        renamed ? 'LEAK' : 'REPELLED', `HTTP ${rename.status}, ${renamed ? 'RENAMED' : 'unchanged'}`);
+
+      // 7e. A live member SHOULD be able to read its family's record. Asserted
+      // so a future over-tightening that locks real caregivers out shows up
+      // here as a failure instead of looking like extra security.
+      const canRead = await rest('parents?select=id&limit=1', { token: D.token });
+      record('escalate-d', 'a live member can still read its own family',
+        canRead.status === 200 ? 'REPELLED' : 'ERROR',
+        `HTTP ${canRead.status} — positive control: a member MUST be able to read`);
+    }
+  } else {
+    record('escalate-d', 'live non-owner escalation', 'INCONCLUSIVE',
+      'PROBE_D_EMAIL / PROBE_D_PASSWORD not set — the escalation trigger is unverified this run (G2-54)');
   }
 
   // ---------------------------------------------------------------------------

@@ -26,7 +26,8 @@
 # REQUIRED SECRETS
 #   PROBE_A_EMAIL / PROBE_A_PASSWORD
 #   PROBE_B_EMAIL / PROBE_B_PASSWORD
-#   PROBE_C_EMAIL / PROBE_C_PASSWORD
+#   PROBE_C_EMAIL / PROBE_C_PASSWORD   (a REMOVED member — must stay removed)
+#   PROBE_D_EMAIL / PROBE_D_PASSWORD   (a LIVE NON-OWNER in probe A's family)
 #   SUPABASE_DB_URL   — session pooler URL, for the policy and function checks,
 #                       which read pg_policies and pg_proc and so cannot run
 #                       through PostgREST.
@@ -77,6 +78,11 @@ jobs:
           PROBE_B_PASSWORD: ${{ secrets.PROBE_B_PASSWORD }}
           PROBE_C_EMAIL: ${{ secrets.PROBE_C_EMAIL }}
           PROBE_C_PASSWORD: ${{ secrets.PROBE_C_PASSWORD }}
+          # G2-54: without these the privilege-escalation trigger is not
+          # verified on the run, and the suite reports that rather than passing
+          # quietly.
+          PROBE_D_EMAIL: ${{ secrets.PROBE_D_EMAIL }}
+          PROBE_D_PASSWORD: ${{ secrets.PROBE_D_PASSWORD }}
         run: node scripts/rls-attack-suite.mjs
 
   # Optional, and shown as skipped until SUPABASE_DB_URL exists. Reading
