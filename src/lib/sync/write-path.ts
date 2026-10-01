@@ -7,7 +7,13 @@
 import { validateConsent } from '@/lib/consent';
 import { firstUnsyncableId } from '@/lib/sync/ids';
 import { getDb } from '@/lib/db/client';
-import { enqueueWrite, getById, softDelete, upsertRow } from '@/lib/db/repository';
+import {
+  enqueueWrite,
+  getById,
+  getKnownServerVersions,
+  softDelete,
+  upsertRow,
+} from '@/lib/db/repository';
 import type { SyncableTable } from '@/lib/db/schema';
 import { bumpDataVersion } from '@/lib/db/signal';
 import { isDemoMode } from '@/lib/demo-mode';
@@ -78,13 +84,29 @@ export async function writeRow(
   row: Record<string, any>,
 ): Promise<void> {
   guardParentConsent(table, row);
+
+  // G2-28: record which SERVER version this edit was made against, captured
+  // here because a pull between now and the push would otherwise overwrite the
+  // evidence — known_ids would read as current and the engine would conclude
+  // nobody else had touched the row.
+  //
+  // It comes from known_ids rather than from the mirror's own updated_at on
+  // purpose: the server's set_updated_at trigger replaces whatever this device
+  // sends, so the mirror's local stamp is a value the server has never held and
+  // would never match. Null means the server has never shown us this row — an
+  // insert, where there is nothing to contest.
+  const demo = isDemoMode();
+  const base = demo
+    ? null
+    : (await getKnownServerVersions(table, [String(row.id)])).get(String(row.id)) ?? null;
+
   const stamped = stampWrite(row);
   await upsertRow(table, stamped);
   // Demo mode never talks to Supabase — skip the outbound queue so demo
   // writes stay self-contained and don't leak into a real account later.
-  if (!isDemoMode()) {
+  if (!demo) {
     guardOutboundIds(table, stamped);
-    await enqueueWrite(table, 'update', stamped);
+    await enqueueWrite(table, 'update', stamped, base);
     nudge();
   }
   bumpDataVersion();
@@ -104,12 +126,19 @@ export async function writeRows(
   const stamped = rows.map(stampWrite);
   const db = await getDb();
   const demo = isDemoMode();
+
+  // G2-28, as one query rather than one per row: a schedule change can rewrite
+  // ninety doses, and this has to happen before the upserts stamp new versions.
+  const bases = demo
+    ? new Map<string, string>()
+    : await getKnownServerVersions(table, stamped.map((r) => String(r.id)));
+
   await db.withTransactionAsync(async () => {
     for (const r of stamped) await upsertRow(table, r);
     if (!demo) {
       for (const r of stamped) {
         guardOutboundIds(table, r);
-        await enqueueWrite(table, 'update', r);
+        await enqueueWrite(table, 'update', r, bases.get(String(r.id)) ?? null);
       }
     }
   });
@@ -131,6 +160,7 @@ export async function deleteRows(table: SyncableTable, ids: string[]): Promise<v
   const rows = await Promise.all(ids.map((id) => getById(table, id)));
   const db = await getDb();
   const demo = isDemoMode();
+  const deleteBases = demo ? new Map<string, string>() : await getKnownServerVersions(table, ids);
   await db.withTransactionAsync(async () => {
     for (const id of ids) await softDelete(table, id);
     if (!demo) {
@@ -142,7 +172,10 @@ export async function deleteRows(table: SyncableTable, ids: string[]): Promise<v
           updated_at: now,
         };
         guardOutboundIds(table, tombstone);
-        await enqueueWrite(table, 'delete', tombstone);
+        // G2-28: a delete is contestable too — somebody editing a medication
+        // while a sibling removes it is the same class of conflict. Base from
+        // known_ids for the same reason as writeRow.
+        await enqueueWrite(table, 'delete', tombstone, deleteBases.get(ids[i]) ?? null);
       }
     }
   });
@@ -173,7 +206,10 @@ export async function deleteRow(table: SyncableTable, id: string): Promise<void>
       updated_at: now,
     };
     guardOutboundIds(table, tombstone);
-    await enqueueWrite(table, 'delete', tombstone);
+    // G2-28: base from known_ids — the server version this delete was decided
+    // against — for the same reason as writeRow.
+    const base = (await getKnownServerVersions(table, [id])).get(id) ?? null;
+    await enqueueWrite(table, 'delete', tombstone, base);
     nudge();
   }
   bumpDataVersion();

@@ -206,6 +206,42 @@ export async function listRawWithTombstones(table: SyncableTable): Promise<Row[]
 }
 
 /** Max updated_at we've seen locally for a table. Anchor for delta pulls. */
+/**
+ * The last server version we were told about, for each of these ids (G2-28).
+ *
+ * This is the base an edit is measured against. One query rather than one per
+ * row, because a schedule change can rewrite ninety doses.
+ *
+ * Ids absent from the result have no recorded server version — either the row
+ * has never been pulled (a genuine insert, nothing to contest) or it predates
+ * this bookkeeping. Both are treated as "push blind", which is the behaviour
+ * that was there before, so neither becomes a false conflict.
+ */
+export async function getKnownServerVersions(
+  table: SyncableTable,
+  ids: string[],
+): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const db = await getDb();
+  const out = new Map<string, string>();
+  // Chunked against SQLITE_MAX_VARIABLE_NUMBER, which a long schedule change
+  // would otherwise exceed.
+  const CHUNK = 400;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const slice = ids.slice(i, i + CHUNK);
+    const rows = await db.getAllAsync<{ row_id: string; server_updated_at: string | null }>(
+      `SELECT row_id, server_updated_at FROM known_ids ` +
+        `WHERE table_name = ? AND row_id IN (${slice.map(() => '?').join(',')})`,
+      table,
+      ...slice,
+    );
+    for (const row of rows) {
+      if (row.server_updated_at) out.set(row.row_id, row.server_updated_at);
+    }
+  }
+  return out;
+}
+
 export async function maxUpdatedAt(table: SyncableTable): Promise<string | null> {
   const db = await getDb();
   const row = await db.getFirstAsync<{ max_ua: string | null }>(
@@ -239,20 +275,30 @@ export async function setLastPulledAt(table: SyncableTable, at: string): Promise
 
 export type PendingOp = 'insert' | 'update' | 'delete';
 
+/**
+ * Queue a write for the server.
+ *
+ * `baseUpdatedAt` (G2-28) is the row's updated_at as it stood BEFORE this edit —
+ * the version the user was actually looking at. The push path needs it to tell
+ * an uncontested write from one that is about to overwrite somebody else's
+ * change. Pass null for a genuine insert, where there is nothing to contest.
+ */
 export async function enqueueWrite(
   table: SyncableTable,
   op: PendingOp,
   row: Row,
+  baseUpdatedAt: string | null = null,
 ): Promise<void> {
   const db = await getDb();
   await db.runAsync(
-    `INSERT INTO pending_writes (table_name, op, row_id, payload, enqueued_at) ` +
-      `VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO pending_writes (table_name, op, row_id, payload, enqueued_at, base_updated_at) ` +
+      `VALUES (?, ?, ?, ?, ?, ?)`,
     table,
     op,
     row.id,
     JSON.stringify(row),
     new Date().toISOString(),
+    baseUpdatedAt,
   );
 }
 
@@ -262,11 +308,19 @@ export async function enqueueWrite(
 export const MAX_PUSH_ATTEMPTS = 5;
 
 export async function listPendingWrites(): Promise<
-  Array<{ id: number; table_name: SyncableTable; op: PendingOp; row_id: string; payload: string; attempts: number }>
+  Array<{
+    id: number;
+    table_name: SyncableTable;
+    op: PendingOp;
+    row_id: string;
+    payload: string;
+    attempts: number;
+    base_updated_at: string | null;
+  }>
 > {
   const db = await getDb();
   return db.getAllAsync(
-    `SELECT id, table_name, op, row_id, payload, attempts FROM pending_writes ` +
+    `SELECT id, table_name, op, row_id, payload, attempts, base_updated_at FROM pending_writes ` +
       `WHERE attempts < ? ORDER BY id`,
     MAX_PUSH_ATTEMPTS,
   );
@@ -310,14 +364,33 @@ export async function deleteWrite(id: number): Promise<void> {
 
 // ---- known_ids -------------------------------------------------------------
 
-export async function recordKnownId(table: SyncableTable, id: string): Promise<void> {
+/**
+ * Remember that the server has this row, and which version of it we were told
+ * about (G2-28).
+ *
+ * `serverUpdatedAt` must be a value that came FROM the server — a pulled row's
+ * updated_at, or the one an upsert returned. Passing the mirror's own
+ * locally-stamped updated_at would defeat the purpose: the server's
+ * `set_updated_at` trigger overwrites whatever this device sends, so a local
+ * stamp never matches and every update would look contested.
+ */
+export async function recordKnownId(
+  table: SyncableTable,
+  id: string,
+  serverUpdatedAt?: string | null,
+): Promise<void> {
   const db = await getDb();
   await db.runAsync(
-    `INSERT INTO known_ids (table_name, row_id, seen_at) VALUES (?, ?, ?) ` +
-      `ON CONFLICT(table_name, row_id) DO UPDATE SET seen_at = excluded.seen_at`,
+    `INSERT INTO known_ids (table_name, row_id, seen_at, server_updated_at) VALUES (?, ?, ?, ?) ` +
+      `ON CONFLICT(table_name, row_id) DO UPDATE SET seen_at = excluded.seen_at, ` +
+      // COALESCE so a caller that does not know the version cannot blank a
+      // version we already had — that would silently turn conflict detection
+      // off for the row.
+      `server_updated_at = COALESCE(excluded.server_updated_at, known_ids.server_updated_at)`,
     table,
     id,
     new Date().toISOString(),
+    serverUpdatedAt ?? null,
   );
 }
 
@@ -332,3 +405,116 @@ export async function isKnownId(table: SyncableTable, id: string): Promise<boole
 }
 
 export { SYNCABLE_TABLES };
+
+// ---------------------------------------------------------------------------
+// Write conflicts (G2-28)
+//
+// An edit that was not applied because someone else had changed the same row
+// first. Previously the engine merged by timestamp and the loser was never
+// told, so one sibling's dosage change could vanish in silence.
+//
+// Both sides are kept. Nothing here is a resolution — it is the record that a
+// choice is owed, and the data needed to make it.
+// ---------------------------------------------------------------------------
+
+export type WriteConflict = {
+  id: number;
+  table_name: SyncableTable;
+  row_id: string;
+  base_updated_at: string | null;
+  server_updated_at: string;
+  /** What this device tried to write. */
+  mine: Row;
+  /** What the server held instead. */
+  theirs: Row;
+  detected_at: string;
+};
+
+export async function recordConflict(args: {
+  table: SyncableTable;
+  rowId: string;
+  baseUpdatedAt: string | null;
+  serverUpdatedAt: string;
+  mine: Row;
+  theirs: Row;
+}): Promise<void> {
+  const db = await getDb();
+  // One open conflict per row. A device that keeps syncing while a conflict is
+  // unresolved would otherwise file the same one every cycle and bury the
+  // original under duplicates.
+  const existing = await db.getFirstAsync<{ id: number }>(
+    `SELECT id FROM write_conflicts WHERE table_name = ? AND row_id = ? AND resolved_at IS NULL`,
+    args.table,
+    args.rowId,
+  );
+  if (existing) {
+    await db.runAsync(
+      `UPDATE write_conflicts SET server_updated_at = ?, theirs = ?, detected_at = ? WHERE id = ?`,
+      args.serverUpdatedAt,
+      JSON.stringify(args.theirs),
+      new Date().toISOString(),
+      existing.id,
+    );
+    return;
+  }
+  await db.runAsync(
+    `INSERT INTO write_conflicts
+       (table_name, row_id, base_updated_at, server_updated_at, mine, theirs, detected_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    args.table,
+    args.rowId,
+    args.baseUpdatedAt,
+    args.serverUpdatedAt,
+    JSON.stringify(args.mine),
+    JSON.stringify(args.theirs),
+    new Date().toISOString(),
+  );
+}
+
+export async function listOpenConflicts(): Promise<WriteConflict[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{
+    id: number;
+    table_name: SyncableTable;
+    row_id: string;
+    base_updated_at: string | null;
+    server_updated_at: string;
+    mine: string;
+    theirs: string;
+    detected_at: string;
+  }>(
+    `SELECT id, table_name, row_id, base_updated_at, server_updated_at, mine, theirs, detected_at
+     FROM write_conflicts WHERE resolved_at IS NULL ORDER BY detected_at DESC`,
+  );
+  return rows.map((r) => ({
+    ...r,
+    mine: JSON.parse(r.mine) as Row,
+    theirs: JSON.parse(r.theirs) as Row,
+  }));
+}
+
+export async function countOpenConflicts(): Promise<number> {
+  const db = await getDb();
+  const r = await db.getFirstAsync<{ n: number }>(
+    `SELECT COUNT(*) as n FROM write_conflicts WHERE resolved_at IS NULL`,
+  );
+  return r?.n ?? 0;
+}
+
+/**
+ * Close a conflict. `resolution` records WHICH way it went, so "I kept theirs"
+ * is distinguishable later from "I never looked at it" — the row is kept rather
+ * than deleted for exactly that reason.
+ */
+export async function resolveConflict(
+  id: number,
+  resolution: 'kept-mine' | 'kept-theirs',
+): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `UPDATE write_conflicts SET resolved_at = ?, resolution = ? WHERE id = ?`,
+    new Date().toISOString(),
+    resolution,
+    id,
+  );
+}

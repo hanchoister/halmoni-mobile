@@ -42,6 +42,9 @@ function since(iso: string | null): string {
 interface QueueCounts {
   pending: number;
   quarantined: number;
+  /** G2-28: edits not applied because someone else changed the row first. */
+  conflicts: number;
+  resolved: number;
 }
 
 // Mirrors the write-path's own quarantine threshold (G1-11): a write that
@@ -82,6 +85,15 @@ export default function DiagnosticsScreen() {
           `SELECT COUNT(*) as n FROM pending_writes WHERE attempts >= ?`,
           QUARANTINE_ATTEMPTS,
         );
+        // G2-28. Resolved ones are counted too: "3 conflicts, all resolved"
+        // and "3 conflicts, none looked at" are very different support stories,
+        // and the resolved rows are kept precisely so that can be told apart.
+        const conflicts = await db.getFirstAsync<{ n: number }>(
+          `SELECT COUNT(*) as n FROM write_conflicts WHERE resolved_at IS NULL`,
+        );
+        const resolved = await db.getFirstAsync<{ n: number }>(
+          `SELECT COUNT(*) as n FROM write_conflicts WHERE resolved_at IS NOT NULL`,
+        );
         // Row counts answer "is anything actually down there" without asking
         // the caregiver to describe what they can see.
         const counts: string[] = [];
@@ -90,7 +102,12 @@ export default function DiagnosticsScreen() {
           counts.push(`${t.replace('_', ' ')} ${r?.n ?? 0}`);
         }
         if (!cancelled) {
-          setQueue({ pending: total?.n ?? 0, quarantined: quarantined?.n ?? 0 });
+          setQueue({
+            pending: total?.n ?? 0,
+            quarantined: quarantined?.n ?? 0,
+            conflicts: conflicts?.n ?? 0,
+            resolved: resolved?.n ?? 0,
+          });
           setRows(counts.join(' · '));
           setNotif(getNotificationHealth());
           setStorageNote(getPrefsStorageNote());
@@ -133,6 +150,10 @@ export default function DiagnosticsScreen() {
           <>
             <Row label="Pending writes" value={String(queue.pending)} />
             <Row label="Quarantined" value={String(queue.quarantined)} />
+            <Row
+              label="Conflicts waiting"
+              value={`${queue.conflicts}${queue.resolved ? ` (${queue.resolved} resolved)` : ''}`}
+            />
           </>
         ) : (
           <Row label="Write queue" value="Reading…" />
@@ -230,7 +251,7 @@ export default function DiagnosticsScreen() {
             `Halmoni ${appVersion} (build ${buildNumber}, runtime ${runtimeVersion})`,
             `${Platform.OS} ${String(Platform.Version)} · ${Constants.deviceName ?? 'unknown'} · ${Constants.executionEnvironment ?? 'unknown'}`,
             `backend ${backendRef()} · ${demo ? 'demo' : 'live'}`,
-            `sync ${status} · last ${since(lastSyncAt)} · pending ${queue?.pending ?? '?'} · quarantined ${queue?.quarantined ?? '?'}`,
+            `sync ${status} · last ${since(lastSyncAt)} · pending ${queue?.pending ?? '?'} · quarantined ${queue?.quarantined ?? '?'} · conflicts ${queue?.conflicts ?? '?'}`,
             lastError ? `sync error ${lastError}` : null,
             `timezone ${deviceZone() ?? 'unavailable'} · zones ${zoneSupported('America/New_York') ? 'ok' : 'UNSUPPORTED'}`,
             `reminders permission ${notif?.permission ?? '?'} · set ${notif?.scheduled ?? '?'} (${notif?.repeating ?? '?'} repeating) · horizon ${notif?.horizonDays ?? '?'}d · dropped ${notif?.dropped ?? 0} · checked ${since(notif?.lastRunAt ?? null)}`,

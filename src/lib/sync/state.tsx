@@ -13,6 +13,7 @@ import {
   useState,
 } from 'react';
 
+import { countOpenConflicts } from '@/lib/db/repository';
 import { topUpDoseHorizon } from '@/lib/dose-maintenance';
 import { syncOnce, SyncResult } from '@/lib/sync/engine';
 import { _registerSyncTrigger } from '@/lib/sync/write-path';
@@ -23,6 +24,17 @@ interface SyncState {
   status: SyncStatus;
   lastSyncAt: string | null;
   lastError: string | null;
+  /**
+   * Edits that were not applied because someone else changed the row first
+   * (G2-28). Deliberately part of sync state rather than fetched per screen:
+   * a conflict is something a caregiver is owed a prompt about, and the number
+   * has to be available to whatever is showing the sync indicator.
+   *
+   * Counted from the database rather than accumulated from sync results, so it
+   * survives an app restart — an unresolved conflict does not stop mattering
+   * because the process was killed.
+   */
+  openConflicts: number;
   requestSync: () => void;
 }
 
@@ -30,6 +42,7 @@ const SyncContext = createContext<SyncState>({
   status: 'idle',
   lastSyncAt: null,
   lastError: null,
+  openConflicts: 0,
   requestSync: () => {},
 });
 
@@ -85,6 +98,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SyncStatus>('idle');
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [openConflicts, setOpenConflicts] = useState(0);
   const runningRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -96,6 +110,17 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     try {
       const result: SyncResult = await syncOnce();
       setLastSyncAt(new Date().toISOString());
+
+      // G2-28. Read every cycle rather than only when result.conflicts > 0:
+      // the count also has to come DOWN when the user resolves one, and it has
+      // to be right on the first sync after a cold start, where this process
+      // has detected nothing itself but conflicts may already be waiting.
+      try {
+        setOpenConflicts(await countOpenConflicts());
+      } catch {
+        // Counting conflicts must never be able to fail a sync. The data is
+        // already safe in write_conflicts either way.
+      }
 
       // Per-table failures no longer throw — they are collected so the rest of
       // the sync can proceed. That means they have to be reported explicitly,
@@ -157,7 +182,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   }, [runSync]);
 
   return (
-    <SyncContext.Provider value={{ status, lastSyncAt, lastError, requestSync }}>
+    <SyncContext.Provider value={{ status, lastSyncAt, lastError, openConflicts, requestSync }}>
       {children}
     </SyncContext.Provider>
   );

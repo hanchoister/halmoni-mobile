@@ -10,6 +10,7 @@
 // one thing worth having, and asking someone to read a laptop terminal is not a
 // support workflow.
 
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -27,8 +28,34 @@ function since(iso: string | null): string {
 }
 
 export function SyncBanner() {
-  const { status, lastError, lastSyncAt, requestSync } = useSyncStatus();
+  const { status, lastError, lastSyncAt, openConflicts, requestSync } = useSyncStatus();
   const [open, setOpen] = useState(false);
+
+  // G2-28, and it comes FIRST — before the offline and error states.
+  //
+  // The ranking is deliberate. "Offline" resolves itself when the network comes
+  // back; a conflict never does, and it means one of this family's edits is not
+  // in the record and nobody has been told which. It is also the only banner
+  // state that needs a decision rather than patience, so burying it under a
+  // transient network message would be exactly backwards.
+  if (openConflicts > 0) {
+    return (
+      <Pressable onPress={() => router.push('/conflicts')} style={[styles.wrap, styles.conflict]}>
+        <View style={styles.row}>
+          <Text style={styles.title}>
+            {openConflicts === 1
+              ? 'A change of yours did not save'
+              : `${openConflicts} changes of yours did not save`}
+          </Text>
+          <Text style={styles.retry}>Review</Text>
+        </View>
+        <Text style={styles.sub}>
+          Someone else changed the same thing first. Nothing was lost — tap to pick which
+          version is right.
+        </Text>
+      </Pressable>
+    );
+  }
 
   if (status !== 'error' && status !== 'offline') return null;
 
@@ -58,6 +85,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   error: { backgroundColor: '#fbeee6', borderWidth: 1, borderColor: palette.terracotta500 },
+  // Stronger than the error banner on purpose: this one is asking for a
+  // decision, not reporting weather.
+  conflict: { backgroundColor: '#fbeee6', borderWidth: 2, borderColor: palette.terracotta500 },
   offline: { backgroundColor: palette.cream100, borderWidth: 1, borderColor: palette.cream200 },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { fontSize: 14, fontWeight: '700', color: palette.ink900, flex: 1 },

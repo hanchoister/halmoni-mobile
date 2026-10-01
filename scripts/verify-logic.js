@@ -631,5 +631,50 @@ console.log('\nhuman dates and times — the field that demanded 20:30 (G2-29)')
   });
 }
 
+// ---------------------------------------------------------------------------
+// G2-28 — the conflict decision.
+//
+// A wrong "safe" silently destroys a sibling's edit to a medical record; a
+// wrong "conflict" interrupts someone who did nothing wrong. Both directions
+// are asserted, including the two cases that must NOT be conflicts, because
+// getting those wrong would strand every unsent edit on the first launch after
+// an upgrade.
+// ---------------------------------------------------------------------------
+{
+  const { classifyWrite } = load('conflict.js');
+
+  const S1 = '2026-10-01T10:00:00.000Z';
+  const S2 = '2026-10-01T10:05:00.000Z';
+
+  check('unchanged since the edit began is safe', () =>
+    assert.strictEqual(classifyWrite(S1, S1), 'safe'));
+
+  check('a different server version is a conflict', () =>
+    assert.strictEqual(classifyWrite(S1, S2), 'conflict'));
+
+  // The engine compares for equality rather than ordering, deliberately — see
+  // conflict.ts. A server version that is somehow OLDER than the base still
+  // means the row is not what this edit was made against.
+  check('an older server version is still a conflict, not a pass', () =>
+    assert.strictEqual(classifyWrite(S2, S1), 'conflict'));
+
+  check('no base recorded pushes blind, as it did before', () =>
+    assert.strictEqual(classifyWrite(null, S2), 'safe'));
+
+  check('a row the server does not have is an insert, not a conflict', () =>
+    assert.strictEqual(classifyWrite(S1, undefined), 'safe'));
+
+  check('no base and no server row is still safe', () =>
+    assert.strictEqual(classifyWrite(null, undefined), 'safe'));
+
+  // Guarding the shape of the comparison itself: these are ISO strings from
+  // Postgres, and a sub-millisecond difference is a real write.
+  check('a sub-second difference counts as a conflict', () =>
+    assert.strictEqual(
+      classifyWrite('2026-10-01T10:00:00.000Z', '2026-10-01T10:00:00.001Z'),
+      'conflict',
+    ));
+}
+
 console.log(failures === 0 ? '\nPASS: all logic checks' : `\nFAIL: ${failures} check(s)`);
 process.exit(failures === 0 ? 0 : 1);

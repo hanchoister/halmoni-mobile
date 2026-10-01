@@ -6,7 +6,11 @@
 // JSON-shaped columns (arrays, objects) are stored as TEXT and parsed via the
 // repository. This keeps SQLite ↔ Postgres alignment simple.
 
-export const SCHEMA_VERSION = 5;
+// 6 (G2-28): known_ids gained server_updated_at. known_ids is in
+// REBUILDABLE_TABLES, so the bump drops it and the forced full re-pull fills the
+// new column in — no ALTER needed, unlike pending_writes, which the bump
+// deliberately preserves.
+export const SCHEMA_VERSION = 6;
 
 // Ordered so foreign-key-referenced tables come first.
 export const CREATE_TABLE_SQL: string[] = [
@@ -219,25 +223,51 @@ export const CREATE_TABLE_SQL: string[] = [
 
   // Offline write queue: local writes stage here and drain to Supabase.
   // op is 'insert' | 'update' | 'delete'; payload is the row JSON.
+  // base_updated_at (G2-28): the row's updated_at as it stood when this edit
+  // began — the version the user was looking at. The push path compares it
+  // against the server's current updated_at to tell "nobody else touched this"
+  // from "somebody did, and a blind upsert is about to erase their change".
+  // Nullable on purpose: entries queued before this column existed have no base
+  // to compare, and must keep pushing exactly as they did rather than being
+  // treated as conflicts.
+  //
+  // NOTE: pending_writes is NOT in REBUILDABLE_TABLES — see client.ts, which
+  // deliberately preserves it across a schema bump because it holds the user's
+  // own unsent edits. So CREATE TABLE IF NOT EXISTS never reaches an installed
+  // device, and this column arrives through the explicit ALTER in client.ts.
+  // Both have to agree; changing one without the other means a fresh install
+  // and an upgrade disagree about the schema.
   `CREATE TABLE IF NOT EXISTS pending_writes (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    table_name   TEXT NOT NULL,
-    op           TEXT NOT NULL,
-    row_id       TEXT NOT NULL,
-    payload      TEXT NOT NULL,
-    enqueued_at  TEXT NOT NULL,
-    attempts     INTEGER NOT NULL DEFAULT 0,
-    last_error   TEXT
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_name      TEXT NOT NULL,
+    op              TEXT NOT NULL,
+    row_id          TEXT NOT NULL,
+    payload         TEXT NOT NULL,
+    enqueued_at     TEXT NOT NULL,
+    attempts        INTEGER NOT NULL DEFAULT 0,
+    last_error      TEXT,
+    base_updated_at TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS pending_writes_table_idx ON pending_writes(table_name, enqueued_at)`,
 
   // Known-IDs cache: what we've seen from the server. Distinguishes "server
   // deleted this row" from "we've never seen it" during merge — mirrors
   // evergreen's approach.
+  // server_updated_at (G2-28) is the version the SERVER last told us about, and
+  // it is deliberately not the same thing as the mirror's own updated_at.
+  //
+  // Every one of the 12 synced tables carries a `set_updated_at` BEFORE trigger
+  // on production that does `NEW.updated_at := now()` unconditionally (verified
+  // 2026-10-01 against pg_trigger). So the server NEVER keeps the updated_at
+  // this device sends — it always substitutes its own clock. Comparing the
+  // mirror's locally-stamped updated_at against the server's would therefore
+  // report a conflict on every single update, which is why conflict detection
+  // needs a value that came from the server to compare against.
   `CREATE TABLE IF NOT EXISTS known_ids (
-    table_name   TEXT NOT NULL,
-    row_id       TEXT NOT NULL,
-    seen_at      TEXT NOT NULL,
+    table_name        TEXT NOT NULL,
+    row_id            TEXT NOT NULL,
+    seen_at           TEXT NOT NULL,
+    server_updated_at TEXT,
     PRIMARY KEY (table_name, row_id)
   )`,
 
@@ -251,6 +281,36 @@ export const CREATE_TABLE_SQL: string[] = [
     id           TEXT PRIMARY KEY,
     notified_at  TEXT NOT NULL
   )`,
+
+  // G2-28: edits that were NOT applied because someone else had changed the
+  // same row first.
+  //
+  // This is the whole point of the item. The sync engine merged by row-level
+  // timestamp — last write wins — and the loser was never told. Two siblings
+  // editing the same medication meant one of them silently lost a dosage
+  // change, which is not an acceptable failure mode for a medical record.
+  //
+  // Both versions are stored, not just the winner. `mine` is what this device
+  // tried to write; `theirs` is what the server held instead. Nothing is
+  // discarded, so a resolution UI can offer either one later, and in the
+  // meantime the data still exists.
+  //
+  // Deliberately NOT in REBUILDABLE_TABLES: a conflict is the user's own lost
+  // edit, and re-pulling from the server cannot reconstruct it. Same reasoning
+  // that keeps pending_writes.
+  `CREATE TABLE IF NOT EXISTS write_conflicts (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_name        TEXT NOT NULL,
+    row_id            TEXT NOT NULL,
+    base_updated_at   TEXT,
+    server_updated_at TEXT NOT NULL,
+    mine              TEXT NOT NULL,
+    theirs            TEXT NOT NULL,
+    detected_at       TEXT NOT NULL,
+    resolved_at       TEXT,
+    resolution        TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS write_conflicts_open_idx ON write_conflicts(resolved_at, detected_at)`,
 ];
 
 // Column allow-list per table, derived from the CREATE TABLE statements above

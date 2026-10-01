@@ -15,6 +15,38 @@ const DB_NAME = 'halmoni.db';
 let _db: SQLite.SQLiteDatabase | null = null;
 let _initPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
+/**
+ * Columns added to a table that the schema bump deliberately does NOT drop.
+ *
+ * `pending_writes` is kept across a version bump on purpose — it holds the
+ * user's own edits that have not reached the server yet, and they are the one
+ * thing here that re-syncing cannot recover. The cost of keeping it is that
+ * `CREATE TABLE IF NOT EXISTS` does nothing to it on an upgrade, so a new column
+ * declared in schema.ts would exist on fresh installs and be missing on every
+ * device that already has the app. Reads of it would come back undefined and,
+ * worse, read as "no base recorded" — which the push path treats as the legacy
+ * case and pushes blind. The conflict detection would be silently off for
+ * exactly the users who have been here longest.
+ *
+ * So the column is added explicitly here, and guarded by reading
+ * `PRAGMA table_info` rather than by catching an error: SQLite's duplicate-column
+ * failure is a generic SQLITE_ERROR, so catching it would also swallow a genuine
+ * problem with the ALTER.
+ */
+async function addMissingColumns(db: SQLite.SQLiteDatabase): Promise<void> {
+  const additions: Array<{ table: string; column: string; type: string }> = [
+    // G2-28. Nullable, so existing queue entries keep their current behaviour
+    // rather than being mistaken for conflicts on the next sync.
+    { table: 'pending_writes', column: 'base_updated_at', type: 'TEXT' },
+  ];
+
+  for (const { table, column, type } of additions) {
+    const cols = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+    if (cols.some((c) => c.name === column)) continue;
+    await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  }
+}
+
 export async function getDb(): Promise<SQLite.SQLiteDatabase> {
   if (_db) return _db;
   if (_initPromise) return _initPromise;
@@ -50,6 +82,8 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
     for (const stmt of CREATE_TABLE_SQL) {
       await db.execAsync(stmt);
     }
+
+    await addMissingColumns(db);
     await db.runAsync(
       `INSERT OR IGNORE INTO schema_version (version) VALUES (?)`,
       SCHEMA_VERSION,
