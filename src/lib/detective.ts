@@ -4,8 +4,11 @@ import kb from '@/lib/med-knowledge.json';
 // Halmoni deliberately does not judge symptoms. It reports that something was logged
 // after a medication started (or that a family member linked the two) and leaves every
 // clinical question to the doctor: no side-effect matching, no urgency, no reassurance.
-// Reframed 2026-09-13 (plan G1-23). Only `environmentalContexts` is still read from the
-// knowledge file — the `common` / `urgent` side-effect lists in it are intentionally unused.
+// Reframed 2026-09-13 (plan G1-23). The knowledge file's side-effect lists were unused
+// from that day and were deleted on 2026-10-01 (G2-34) — 79 medications of unreviewed
+// clinical content that shipped in the binary with nothing surfacing it. Only
+// `environmentalContexts` remains, and verify-med-knowledge.js now fails the build if
+// per-medication content reappears there.
 
 export type DetectiveMed = {
   id: string;

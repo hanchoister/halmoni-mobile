@@ -50,7 +50,12 @@ export default function ProfileScreen() {
     }
     Alert.alert(
       `Remove ${who}?`,
-      `This deletes ${describeRemoval(counts)}, and ${who}'s own record, from this app and from every phone in the care circle. This is what withdrawing their permission means.`,
+      // "from every phone in the care circle" used to read as deletion from the
+      // devices themselves, which is not what happens (G2-61): the record is
+      // removed from Halmoni and stops being shown in the app everywhere, but
+      // each phone's offline copy is only erased when that phone deletes the app
+      // or its account. Worded to claim the first and not the second.
+      `This deletes ${describeRemoval(counts)}, and ${who}'s own record, from Halmoni. It stops appearing in the app on every phone in the care circle. This is what withdrawing their permission means.`,
       [
         { text: 'Keep', style: 'cancel' },
         {
