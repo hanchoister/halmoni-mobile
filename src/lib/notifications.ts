@@ -395,7 +395,13 @@ async function runDoseAndRefillSync(myMemberId: string | null): Promise<void> {
         schedule: () =>
           scheduleDaily(hour, minute, zone, {
             title: `${med.name} is due`,
-            body: `${parentLabel}'s ${med.name}${med.name.endsWith('due') ? '' : ' dose'} is due now.`,
+            // Worded as a check rather than an accusation, because a repeating
+            // trigger cannot know whether this dose was already logged — it is
+            // created days ahead and fires regardless. "Tap to log it, or
+            // ignore it if it is already done" is true in both cases; "you
+            // missed a dose" would be wrong half the time, and being wrong
+            // about that is how people learn to stop reading these.
+            body: `Time for ${parentLabel}'s ${med.name}. Tap to log it, or ignore this if it has already been given.`,
             data: { type: 'dose-due', medicationId: med.id },
           }),
       });
