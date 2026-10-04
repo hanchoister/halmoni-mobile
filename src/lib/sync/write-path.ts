@@ -11,6 +11,7 @@ import {
   enqueueWrite,
   getById,
   getKnownServerVersions,
+  purgeLocalRow,
   softDelete,
   upsertRow,
 } from '@/lib/db/repository';
@@ -176,6 +177,9 @@ export async function deleteRows(table: SyncableTable, ids: string[]): Promise<v
         // while a sibling removes it is the same class of conflict. Base from
         // known_ids for the same reason as writeRow.
         await enqueueWrite(table, 'delete', tombstone, deleteBases.get(ids[i]) ?? null);
+        // G2-61, same reasoning as deleteRow: the queue has the payload, so the
+        // local content can go now instead of on the next pull.
+        await purgeLocalRow(table, ids[i]);
       }
     }
   });
@@ -210,6 +214,10 @@ export async function deleteRow(table: SyncableTable, id: string): Promise<void>
     // against — for the same reason as writeRow.
     const base = (await getKnownServerVersions(table, [id])).get(id) ?? null;
     await enqueueWrite(table, 'delete', tombstone, base);
+    // G2-61: the outbound copy is queued, so the local one has no further job.
+    // Dropping it now means this device stops holding the content immediately
+    // rather than waiting for the blanked row to come back on the next pull.
+    await purgeLocalRow(table, id);
     nudge();
   }
   bumpDataVersion();

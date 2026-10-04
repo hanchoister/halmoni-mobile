@@ -20,9 +20,15 @@
  * anon on every new table.
  */
 
-import { checkGrants, checkPolicies } from './verify-policies.mjs';
+import { checkGrants, checkPolicies, checkTriggers } from './verify-policies.mjs';
 
 let failures = 0;
+
+// Assert a checker returned nothing, and show what it returned if it did.
+function check0(problems) {
+  if (problems.length) throw new Error(problems.join('; '));
+  return true;
+}
 
 function check(name, condition, detail = '') {
   if (condition) {
@@ -135,6 +141,46 @@ console.log('\nG2-60 — anon grants and default privileges');
   check('a missing snapshot does not silently pass as clean', checkGrants(null).length === 0);
   // Deliberate: null means "not collected", and main() turns that into a visible
   // note rather than a pass. Asserted here so the two cannot drift apart.
+}
+
+console.log('\nG2-61 — a deleted record keeps no content');
+
+{
+  const full = [
+    'parents','medications','med_doses','appointments','visit_notes',
+    'symptoms','handoffs','thread_messages','notes',
+  ].map((t) => ({ table: t, name: `${t}_blank_deleted_content`, enabled: true }));
+  const guards = [
+    { table: 'family_members', name: 'enforce_owner_change_by_owner', enabled: true },
+    { table: 'family_members', name: 'zz_enforce_member_self_edit_allowlist', enabled: true },
+  ];
+
+  check('a complete set of blanking triggers passes', () =>
+    check0(checkTriggers([...full, ...guards])));
+
+  {
+    const missing = checkTriggers([...full.filter((t) => t.table !== 'parents'), ...guards]);
+    check('a missing blanking trigger is a problem',
+      missing.length === 1 && /parents/.test(missing[0]), missing.join('; '));
+  }
+
+  {
+    // ALTER TABLE ... DISABLE TRIGGER leaves the row in pg_trigger, so existence
+    // alone is not the question — this is the quiet way to lose the protection.
+    const disabled = checkTriggers([
+      ...full.map((t) => (t.table === 'notes' ? { ...t, enabled: false } : t)), ...guards,
+    ]);
+    check('a DISABLED trigger is a problem, not a pass',
+      disabled.length === 1 && /DISABLED/.test(disabled[0]), disabled.join('; '));
+  }
+
+  {
+    const noGuard = checkTriggers(full);
+    check('a missing escalation guard is a problem',
+      noGuard.length === 2, noGuard.join('; '));
+  }
+
+  check('a missing snapshot does not silently pass as clean', checkTriggers(null).length === 0);
 }
 
 console.log('');

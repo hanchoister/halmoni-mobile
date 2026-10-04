@@ -135,7 +135,7 @@ export const NO_AUTHORITY_ACKNOWLEDGEMENT =
  * they were shown, and the version stored on the row is the pointer back to
  * them.
  */
-export const CONSENT_NOTICE_VERSION = '2026-09-11';
+export const CONSENT_NOTICE_VERSION = '2026-10-04';
 
 /**
  * Snapshot of CONSENT_BASIS_COPY's attestation/sharing/noticeLine text, one
@@ -159,6 +159,45 @@ export const ATTESTATION_ARCHIVE: Record<
   string,
   Record<ConsentBasis, { attestation: string; sharing: string; noticeLine: string }>
 > = {
+  // 2026-10-04 (G2-61): the attestation sentences are UNCHANGED from 2026-09-11.
+  // Only the notice paragraphs changed, and verify-consent.js requires the
+  // current version to have an entry here matching CONSENT_BASIS_COPY word for
+  // word — so this is a deliberate verbatim copy, not a missed edit.
+  '2026-10-04': {
+    parent_agreed: {
+      attestation:
+        'I have shown or read them the notice above, and they agreed to Halmoni holding their health information.',
+      sharing: 'They also agreed that everyone invited into this care circle can see it.',
+      noticeLine: 'They told us you agreed to this.',
+    },
+    healthcare_proxy: {
+      attestation:
+        'I am the health care agent or proxy named in their advance directive, and it has taken effect because they can no longer make these decisions themselves.',
+      sharing:
+        'As their health care agent, I am deciding that everyone invited into this care circle can see it.',
+      noticeLine: 'They are acting as your named health care agent.',
+    },
+    power_of_attorney: {
+      attestation:
+        'I hold a power of attorney that covers their health care or their health information. (In New York, health care decisions need a health care proxy instead — choose that option above.)',
+      sharing:
+        'Under that authority, I am deciding that everyone invited into this care circle can see it.',
+      noticeLine: 'They are acting under a power of attorney you granted.',
+    },
+    guardianship: {
+      attestation:
+        'I am their court-appointed guardian or conservator of the person, with authority over their care. (A conservator only of their money or property is not this.)',
+      sharing:
+        'Under that authority, I am deciding that everyone invited into this care circle can see it.',
+      noticeLine: 'They are acting as your court-appointed guardian.',
+    },
+    no_formal_authority: {
+      attestation:
+        'They can no longer make this decision themselves, nobody holds a proxy, power of attorney or guardianship, and I am the family member managing their care in what I believe to be their best interest.',
+      sharing: 'On the same basis, I am deciding that everyone invited into this care circle can see it.',
+      noticeLine: 'They are the family member managing your care.',
+    },
+  },
   '2026-09-11': {
     parent_agreed: {
       attestation:
@@ -243,6 +282,33 @@ export const NOTICE_ARCHIVE: Record<
       'Who can see it: the family members who have been invited into your care circle. They can all see everything in it.',
       'Who else touches it: the companies that run the app for us — the database and file storage it lives in, the crash-reporting service that tells us when the app breaks, and the app stores it is delivered through. They may only use it to run the app for us. Halmoni does not sell your information and does not advertise against it.',
       'You can change your mind at any time, and you do not have to give a reason. Tell any family member listed below to delete your record, or email us. It disappears from the app straight away, and from our backup copies within 30 days.',
+      'Questions, or want your information removed without going through your family? Email privacy@halmoni.app and we will answer within 45 days. We may need to check with the family member named below that we are talking to the right person.',
+    ],
+  },
+  // Replaced on 2026-10-04 (G2-61). The 09-11 wording said a deleted record
+  // "disappears from the app straight away, and from our backup copies within
+  // 30 days". Both halves were weaker than they sounded. "Disappears from the
+  // app" was literally true and easy to misread as erasure: the app hid the row
+  // while the server and every phone kept the full content, and there was no
+  // purge job anywhere. And because the live row never went away, each new
+  // backup kept including it — so "gone from backups in 30 days" never arrived.
+  //
+  // Migration 20 makes the strong version true: the content is blanked the
+  // moment deleted_at is set, and because that bumps updated_at it reaches every
+  // phone through the ordinary sync. This wording describes what now happens.
+  //
+  // "As soon as that phone next connects" carries the real dependency — a phone
+  // never opened again keeps its copy — without turning a notice written for the
+  // person being cared for into a systems diagram. The privacy policy states
+  // that limit in full.
+  '2026-10-04': {
+    heading: 'Someone is keeping track of your care in an app called Halmoni',
+    paragraphs: [
+      'Halmoni is a private app your family uses to keep your medications, appointments and health notes in one place, so the people helping you are not working from memory or from four different text threads.',
+      'What it holds: your name and date of birth, the medications you take and when they are due, your allergies and conditions, your appointments and what was said at them, your pharmacy, doctor and insurance details, the people to call in an emergency, and anything your family writes about your care.',
+      'Who can see it: the family members who have been invited into your care circle. They can all see everything in it.',
+      'Who else touches it: the companies that run the app for us — the database and file storage it lives in, the crash-reporting service that tells us when the app breaks, and the app stores it is delivered through. They may only use it to run the app for us. Halmoni does not sell your information and does not advertise against it.',
+      'You can change your mind at any time, and you do not have to give a reason. Tell any family member listed below to delete your record, or email us. Everything above is erased from our database straight away, and from each phone in your care circle as soon as that phone next connects. Backup copies are replaced within 30 days.',
       'Questions, or want your information removed without going through your family? Email privacy@halmoni.app and we will answer within 45 days. We may need to check with the family member named below that we are talking to the right person.',
     ],
   },

@@ -131,6 +131,32 @@ export async function upsertRows(table: SyncableTable, rows: Row[]): Promise<voi
   });
 }
 
+/**
+ * Remove a deleted row's content from THIS device, now (G2-61).
+ *
+ * The server blanks a tombstoned row's content the moment deleted_at is set
+ * (migration 20), and every device picks that up through the ordinary pull. This
+ * closes the gap in between: on the device that did the deleting, the full
+ * record sits in the mirror from the moment of deletion until the next
+ * successful pull — which, offline, can be days.
+ *
+ * The whole row goes rather than its columns being blanked one by one. Blanking
+ * would mean maintaining a second copy of migration 20's column lists here, in a
+ * schema that is a SUBSET of production's, and the two would drift. Dropping the
+ * row is safe because nothing reads a local tombstone: `list()` and `getById()`
+ * both filter `deleted_at IS NULL`, the mirror declares no foreign keys, and
+ * `known_ids` — not the row — is what tells the sync engine "the server deleted
+ * this" apart from "we have never seen it". The pull re-inserts the blank shell
+ * on the next cycle.
+ *
+ * Called AFTER the outbound tombstone is queued. The queue carries its own copy
+ * of the payload, so the push is unaffected by the row going.
+ */
+export async function purgeLocalRow(table: SyncableTable, id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(`DELETE FROM ${table} WHERE id = ? AND deleted_at IS NOT NULL`, id);
+}
+
 /** Soft delete — writes deleted_at + bumps updated_at. */
 export async function softDelete(table: SyncableTable, id: string): Promise<void> {
   const db = await getDb();
@@ -327,6 +353,20 @@ export async function listPendingWrites(): Promise<
 }
 
 /** Writes that have exhausted their retries. Surfaced in diagnostics. */
+/**
+ * Edits made on this device that have not reached the server yet (G2-69).
+ *
+ * Asked before a sign-out, because signing out now wipes the local database —
+ * and that database is where unsent edits live. Someone who logged three doses
+ * on a plane and then signed out would lose them silently, which is a worse bug
+ * than the one the wipe fixes.
+ */
+export async function countPendingWrites(): Promise<number> {
+  const db = await getDb();
+  const r = await db.getFirstAsync<{ n: number }>(`SELECT COUNT(*) as n FROM pending_writes`);
+  return r?.n ?? 0;
+}
+
 export async function countQuarantinedWrites(): Promise<number> {
   const db = await getDb();
   const row = await db.getFirstAsync<{ n: number }>(

@@ -134,6 +134,72 @@ export function checkGrants(grants) {
   return problems;
 }
 
+// Run verbatim against production alongside the others. G2-61: the blanking of
+// a deleted record's content lives in triggers, and a trigger is the easiest
+// kind of protection to lose — `create or replace` on the function leaves it,
+// but a later migration that recreates the TABLE drops every trigger on it
+// silently, and nothing else would notice.
+export const TRIGGER_SQL = `
+select coalesce(json_agg(json_build_object(
+  'table', c.relname, 'name', t.tgname, 'enabled', t.tgenabled <> 'D'
+) order by c.relname, t.tgname), '[]')
+from pg_trigger t
+join pg_class c on c.oid = t.tgrelid
+join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'public' and not t.tgisinternal;
+`;
+
+// Tables whose tombstones must be blanked (migration 20). on_duty, families and
+// family_members are deliberately absent — see the migration's header for why.
+const BLANKED_TABLES = [
+  'parents', 'medications', 'med_doses', 'appointments', 'visit_notes',
+  'symptoms', 'handoffs', 'thread_messages', 'notes',
+];
+
+/**
+ * G2-61. A deleted record must stop containing anything.
+ *
+ * Checked here rather than trusted because of what it protects: before
+ * migration 20, "delete" left 805 tombstoned med_doses, 4 medications and 2
+ * parents fully intact on production, with names, conditions and DNR status, and
+ * no purge job anywhere — while the privacy policy told families deletion
+ * reached every phone.
+ *
+ * Also asserts the trigger is ENABLED. `ALTER TABLE ... DISABLE TRIGGER` leaves
+ * it present in pg_trigger, so existence alone is not the question.
+ */
+export function checkTriggers(triggers) {
+  const problems = [];
+  if (!triggers) return problems;
+
+  for (const table of BLANKED_TABLES) {
+    const want = `${table}_blank_deleted_content`;
+    const t = triggers.find((x) => x.table === table && x.name === want);
+    if (!t) {
+      problems.push(
+        `${table}: missing trigger ${want}. A deleted ${table} row would keep its content ` +
+          'on the server and on every phone, which the privacy policy says it does not (G2-61, migration 20).',
+      );
+    } else if (!t.enabled) {
+      problems.push(`${table}: trigger ${want} exists but is DISABLED (G2-61).`);
+    }
+  }
+
+  // The escalation guard the attack suite's probe D tests. Same reasoning: it is
+  // the only thing stopping a member making themselves owner, since the
+  // "members update" policy has no WITH CHECK.
+  for (const [table, name] of [
+    ['family_members', 'enforce_owner_change_by_owner'],
+    ['family_members', 'zz_enforce_member_self_edit_allowlist'],
+  ]) {
+    const t = triggers.find((x) => x.table === table && x.name === name);
+    if (!t) problems.push(`${table}: missing trigger ${name} (G2-52 / G2-54).`);
+    else if (!t.enabled) problems.push(`${table}: trigger ${name} is DISABLED.`);
+  }
+
+  return problems;
+}
+
 // Functions that live in the `extensions` schema on Supabase. A function whose
 // search_path is pinned to 'public' cannot see them unqualified — which is
 // exactly how create_invite broke (migration 13).
@@ -316,6 +382,17 @@ export function checkPolicies(policies) {
   return { problems, notes };
 }
 
+function loadTriggers() {
+  const i = process.argv.indexOf('--triggers-from-file');
+  if (i !== -1) return JSON.parse(readFileSync(process.argv[i + 1], 'utf8'));
+  if (process.argv.includes('--from-file')) return null; // offline policy-only run
+
+  const out = execFileSync(findPsql(), [process.env.SUPABASE_DB_URL, '-At', '-v', 'ON_ERROR_STOP=1', '-c', TRIGGER_SQL], {
+    encoding: 'utf8',
+  });
+  return JSON.parse(out.trim());
+}
+
 function loadGrants() {
   const i = process.argv.indexOf('--grants-from-file');
   if (i !== -1) return JSON.parse(readFileSync(process.argv[i + 1], 'utf8'));
@@ -348,12 +425,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const grantProblems = grants ? checkGrants(grants) : [];
   if (!grants) notes.push('grant checks skipped: offline --from-file run without --grants-from-file.');
 
-  const all = [...problems, ...fnProblems, ...grantProblems];
+  const triggers = loadTriggers();
+  const triggerProblems = triggers ? checkTriggers(triggers) : [];
+  if (!triggers) notes.push('trigger checks skipped: offline --from-file run without --triggers-from-file.');
+
+  const all = [...problems, ...fnProblems, ...grantProblems, ...triggerProblems];
   for (const n of notes) console.log(`note: ${n}`);
   if (all.length === 0) {
     console.log(
       'OK: production policies match the migrations, the function invariants hold, ' +
-        'and nothing reaches a public table as anon.',
+        'nothing reaches a public table as anon, and a deleted record keeps no content.',
     );
     process.exit(0);
   }

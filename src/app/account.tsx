@@ -16,6 +16,7 @@ import { useMe } from '@/lib/me';
 import { supabase } from '@/lib/supabase';
 import { PRIVACY_URL, TERMS_URL } from '@/lib/terms';
 import { palette, spacing, typography } from '@/lib/theme';
+import { countPendingWrites } from '@/lib/db/repository';
 import { signOutEverywhere } from '@/lib/sign-out';
 
 export default function AccountScreen() {
@@ -104,11 +105,40 @@ export default function AccountScreen() {
     Alert.alert('Invite code copied', `Share this code: ${data}`);
   }
 
+  // G2-69: signing out now erases this phone's copy of the record, so the
+  // dialog has to say so — and has to count unsent edits first.
+  //
+  // The wipe is the right behaviour ("I signed out" should mean the data is not
+  // on this phone any more), but the local database is also where edits live
+  // until they reach the server. Someone who logged three doses on a plane and
+  // then signed out would lose them with no warning, which is a worse bug than
+  // the one being fixed. So the count decides which dialog they see.
   async function signOut() {
-    Alert.alert('Sign out?', 'You can sign back in any time.', [
+    let unsent = 0;
+    try {
+      unsent = await countPendingWrites();
+    } catch {
+      // If the count fails, warn as though there were unsent edits. Erring
+      // toward the cautious dialog costs one extra tap; erring the other way
+      // silently destroys someone's work.
+      unsent = -1;
+    }
+
+    const hasUnsent = unsent !== 0;
+    const body = hasUnsent
+      ? (unsent > 0
+          ? `${unsent === 1 ? 'One change has' : `${unsent} changes have`} not reached the server yet. ` +
+            'Signing out erases this phone\u2019s copy of the record, so those changes would be lost. ' +
+            'Staying signed in until you are back online will save them.'
+          : 'Some changes may not have reached the server yet, and signing out erases this ' +
+            'phone\u2019s copy of the record, so they would be lost.')
+      : 'Everything is saved to the server. Signing out also erases this phone\u2019s copy of ' +
+        'the record \u2014 you can sign back in any time and it will download again.';
+
+    Alert.alert(hasUnsent ? 'Sign out and lose unsaved changes?' : 'Sign out?', body, [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Sign out',
+        text: hasUnsent ? 'Sign out anyway' : 'Sign out',
         style: 'destructive',
         onPress: async () => {
           setBusy(true);
