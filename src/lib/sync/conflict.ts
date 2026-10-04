@@ -50,3 +50,63 @@ export function classifyWrite(
   // conflicts — the exact class of silent failure this item exists to remove.
   return serverUpdatedAt === base ? 'safe' : 'conflict';
 }
+
+/**
+ * A queued write, reduced to the parts the conflict decision actually needs.
+ *
+ * Deliberately structural rather than imported from the repository: this module
+ * has no imports at all, which is what lets verify:logic compile and test it
+ * without expo-sqlite or a Supabase client.
+ */
+export type ContestableWrite = {
+  row_id: string;
+  base_updated_at: string | null;
+};
+
+export type Partitioned<T> = {
+  /** Safe to push. */
+  safe: T[];
+  /** Would erase somebody else's change. */
+  conflicted: Array<{ write: T; serverUpdatedAt: string; serverRow: Record<string, unknown> }>;
+};
+
+/**
+ * Split a table's pending writes into the ones that are safe to push and the
+ * ones that would overwrite a change made since the edit began.
+ *
+ * Lives here, apart from the engine, so the whole decision is testable. The
+ * engine's job is fetching `serverRows`; deciding what they MEAN is this. That
+ * split matters because the engine cannot be compiled outside a React Native
+ * runtime, so anything left inside it is only ever verified by reading it — and
+ * this project has twice shipped a check that could only report "fine".
+ *
+ * @param serverRows what the server currently holds, keyed by row id. A row
+ *                   absent from the map is one the server does not have.
+ */
+export function partitionWrites<T extends ContestableWrite>(
+  writes: T[],
+  serverRows: Map<string, Record<string, unknown>>,
+): Partitioned<T> {
+  const safe: T[] = [];
+  const conflicted: Partitioned<T>['conflicted'] = [];
+
+  for (const w of writes) {
+    const serverRow = serverRows.get(w.row_id);
+    const serverUpdatedAt = serverRow?.updated_at as string | undefined;
+    if (classifyWrite(w.base_updated_at, serverUpdatedAt) === 'safe') {
+      safe.push(w);
+      continue;
+    }
+    // classifyWrite only says 'conflict' when both of these are present, so the
+    // assertions below cannot fire — but they are narrowed explicitly rather
+    // than cast, so a future change to classifyWrite breaks the build here
+    // instead of producing an undefined in a conflict record.
+    if (serverRow === undefined || serverUpdatedAt === undefined) {
+      safe.push(w);
+      continue;
+    }
+    conflicted.push({ write: w, serverUpdatedAt, serverRow });
+  }
+
+  return { safe, conflicted };
+}

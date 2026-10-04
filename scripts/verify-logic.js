@@ -641,7 +641,7 @@ console.log('\nhuman dates and times — the field that demanded 20:30 (G2-29)')
 // an upgrade.
 // ---------------------------------------------------------------------------
 {
-  const { classifyWrite } = load('conflict.js');
+  const { classifyWrite, partitionWrites } = load('conflict.js');
 
   const S1 = '2026-10-01T10:00:00.000Z';
   const S2 = '2026-10-01T10:05:00.000Z';
@@ -674,6 +674,70 @@ console.log('\nhuman dates and times — the field that demanded 20:30 (G2-29)')
       classifyWrite('2026-10-01T10:00:00.000Z', '2026-10-01T10:00:00.001Z'),
       'conflict',
     ));
+
+  // ---------------------------------------------------------------------------
+  // The whole partition, not just one decision.
+  //
+  // This is the path the sync engine actually takes. It used to live inside
+  // engine.ts, which cannot be compiled outside a React Native runtime, so it
+  // was verified only by reading it — and the two-device behaviour has still
+  // never been observed on real hardware (G2-56). These cover everything that
+  // does not need two phones.
+  // ---------------------------------------------------------------------------
+  const w = (row_id, base_updated_at) => ({ row_id, base_updated_at });
+  const server = (pairs) =>
+    new Map(pairs.map(([id, at]) => [id, { id, updated_at: at, name: `server-${id}` }]));
+
+  check('an uncontested batch all pushes', () => {
+    const r = partitionWrites([w('a', S1), w('b', S1)], server([['a', S1], ['b', S1]]));
+    assert.strictEqual(r.safe.length, 2);
+    assert.strictEqual(r.conflicted.length, 0);
+  });
+
+  check('one contested row does not block the rest of the batch', () => {
+    const r = partitionWrites(
+      [w('a', S1), w('b', S1), w('c', S1)],
+      server([['a', S1], ['b', S2], ['c', S1]]),
+    );
+    assert.deepStrictEqual(r.safe.map((x) => x.row_id), ['a', 'c']);
+    assert.deepStrictEqual(r.conflicted.map((x) => x.write.row_id), ['b']);
+  });
+
+  check('a conflict carries the other side, so nothing is lost', () => {
+    const r = partitionWrites([w('a', S1)], server([['a', S2]]));
+    assert.strictEqual(r.conflicted[0].serverUpdatedAt, S2);
+    assert.strictEqual(r.conflicted[0].serverRow.name, 'server-a');
+  });
+
+  check('rows the server does not have are inserts, not conflicts', () => {
+    const r = partitionWrites([w('new', S1)], server([]));
+    assert.strictEqual(r.safe.length, 1);
+    assert.strictEqual(r.conflicted.length, 0);
+  });
+
+  // The upgrade case. Entries queued before base_updated_at existed have null,
+  // and treating those as conflicts would strand every unsent edit on the first
+  // launch after the update — worse than the bug being fixed.
+  check('legacy writes with no base all push, even against a changed server', () => {
+    const r = partitionWrites([w('a', null), w('b', null)], server([['a', S2], ['b', S2]]));
+    assert.strictEqual(r.safe.length, 2);
+    assert.strictEqual(r.conflicted.length, 0);
+  });
+
+  check('an empty batch is not an error', () => {
+    const r = partitionWrites([], server([['a', S1]]));
+    assert.deepStrictEqual([r.safe.length, r.conflicted.length], [0, 0]);
+  });
+
+  // Every write is accounted for exactly once. A row silently appearing in
+  // neither list would be an edit that is never pushed and never reported —
+  // the precise failure this feature exists to remove.
+  check('no write is ever dropped from both lists', () => {
+    const writes = [w('a', S1), w('b', S2), w('c', null), w('d', S1)];
+    const r = partitionWrites(writes, server([['a', S1], ['b', S1], ['d', S2]]));
+    const seen = [...r.safe.map((x) => x.row_id), ...r.conflicted.map((x) => x.write.row_id)].sort();
+    assert.deepStrictEqual(seen, ['a', 'b', 'c', 'd']);
+  });
 }
 
 console.log(failures === 0 ? '\nPASS: all logic checks' : `\nFAIL: ${failures} check(s)`);

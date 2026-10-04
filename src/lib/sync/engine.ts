@@ -26,7 +26,7 @@ import {
 import type { SyncableTable } from '@/lib/db/schema';
 import { bumpDataVersion } from '@/lib/db/signal';
 import { withRetry } from '@/lib/reliability/retry';
-import { classifyWrite } from '@/lib/sync/conflict';
+import { partitionWrites } from '@/lib/sync/conflict';
 
 const PULL_BATCH_LIMIT = 500;
 
@@ -115,27 +115,9 @@ async function partitionByConflict(
   const serverRows = new Map<string, Record<string, unknown>>();
   for (const row of data ?? []) serverRows.set(row.id as string, row);
 
-  const safe: QueuedWrite[] = [];
-  const conflicted: Array<{
-    write: QueuedWrite;
-    serverUpdatedAt: string;
-    serverRow: Record<string, unknown>;
-  }> = [];
-
-  for (const w of writes) {
-    const serverRow = serverRows.get(w.row_id);
-    const serverUpdatedAt = serverRow?.updated_at as string | undefined;
-    // The decision itself lives in sync/conflict.ts, which has no imports and is
-    // tested by verify:logic. This loop only supplies the inputs.
-    if (classifyWrite(w.base_updated_at, serverUpdatedAt) === 'safe') {
-      safe.push(w);
-      continue;
-    }
-    // classifyWrite only returns 'conflict' when both of these are present.
-    conflicted.push({ write: w, serverUpdatedAt: serverUpdatedAt!, serverRow: serverRow! });
-  }
-
-  return { safe, conflicted };
+  // The decision itself is in sync/conflict.ts, which has no imports and is
+  // tested by verify:logic. This function only does the I/O.
+  return partitionWrites(writes, serverRows);
 }
 
 async function pushOnce(): Promise<{ pushed: number; conflicts: number; errors: string[] }> {
