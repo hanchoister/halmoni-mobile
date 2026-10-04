@@ -23,7 +23,7 @@ exists on somebody else's phone.
 | Level | What it does | Status |
 |---|---|---|
 | 1 | Revoke the refresh token, so the session dies at next refresh and the access token within its TTL (1h default) | **Not built** — lands with the removal feature |
-| 2 | Best-effort wipe: on launch, a device that finds its membership revoked deletes its local mirror | **Not built** — would reuse what `delete-account.ts` already does |
+| 2 | Best-effort wipe: on launch, a device that finds its membership revoked deletes its local mirror | **Not built** for revoked membership. Related and now done: a **sign-out** wipes the local mirror (`G2-69`, 2026-10-04) — it previously did not, so the full record survived signing out. |
 | 3 | Keep the mirror out of iCloud backups, so a copy does not survive in Apple's cloud | **Done** 2026-09-23, `G2-33` |
 | 4 | Encrypt the mirror with a key the device fetches at sign-in and never stores, so revoking a member turns their copy into unreadable ciphertext | **Not built** — the only technical guarantee |
 
@@ -40,41 +40,61 @@ there are real test users.
 and never anything that implies erasure from a device the family no longer
 controls.
 
-## A claim that is currently NOT true
+## What was NOT true, and is now
 
-The published app privacy policy says:
+The published policy used to say:
 
 > Removing the person you care for deletes their record and everything attached
 > to it — medications, doses, appointments, notes — on every phone in the circle.
 
-**Verified against the code 2026-10-01: that does not happen.**
-`repository.softDelete` sets `deleted_at` and nothing else, and the pull path
-copies the tombstone into the mirror the same way. `repository.list()` then
-filters tombstoned rows out of what the UI reads — so the record *disappears
-from view* on every phone, which is probably what the sentence was describing.
-But the medication names, dosages, appointment details and note text are all
-still sitting in the SQLite file. There is no purge anywhere in the codebase;
-`grep` for a `DELETE FROM` against a synced table finds none.
+**It did not happen, on either side.** Verified against the code and against
+production on 2026-10-01/04. `softDelete` set `deleted_at` and nothing else, and
+`repository.list()` filtered tombstoned rows out of UI reads — so the record
+*disappeared from view* while the content stayed. Measured on production before
+the fix: **805 tombstoned `med_doses`, 4 `medications`, and 2 `parents`** — two
+people whose records had been "deleted" and whose names, conditions, allergies
+and DNR status were still in Postgres. No purge job existed.
 
-Two separate gaps, and they need different fixes:
+The policy's other sentence was misleading in a quieter way: deleted information
+"disappears from the app straight away and from our backup copies within 30
+days". Backups do roll over — but the live row never went anywhere, so every new
+backup kept including it, and the 30 days never arrived.
 
-1. **The wording over-claims.** "Deletes their record on every phone" should say
-   what actually happens — the record is removed from the app on every phone,
-   and the underlying copy is cleared when that phone next opens the app.
-2. **The code should make the stronger version true.** On pulling a tombstone,
-   the row's *content* should be purged locally rather than merely hidden,
-   keeping only the id and `deleted_at` that sync bookkeeping needs.
+**Fixed 2026-10-04 (migration 20, `616666e`).** Nine `BEFORE INSERT OR UPDATE`
+triggers blank a row's content the moment `deleted_at` is set. The row itself
+stays, because tombstones are how other devices learn a thing was deleted rather
+than never seen; what remains is ids and timestamps.
 
-Gap 2 is deliberately **not** implemented in the same pass that found it. It is
-a destructive change to the local copy of a medical record, it has to respect
-foreign keys between synced tables and `NOT NULL` columns in the mirror, and it
-needs confirming on two real devices before anyone should believe it. Filed as
-its own item rather than bolted on at the end of an unrelated change.
+The device side comes free, which is why the server was the right place for it:
+blanking bumps `updated_at`, so the blanked row is an ordinary sync delta that
+every phone pulls and writes over its own copy. `purgeLocalRow` additionally
+drops the row on the deleting device immediately, closing the window until its
+next pull.
 
-A smaller note on the same sentence: "on every phone in the circle" is true only
-of phones that sync again. A sibling who stops opening the app keeps their copy
-indefinitely, which is a limit no server-side change can remove — only level 4
-can.
+Verified after applying: 9 triggers enabled, **0** rows holding content across
+all nine tables, 811 tombstone shells intact.
+
+### What is deliberately still kept
+
+| Kept | Why |
+|---|---|
+| `family_members`, `families` | A member's name is not the parent's health record, and `notes.author_member_id`, `appointments.attending_member_id` and `parents.consent_attested_by` all point at it — blanking it would erase attribution on live history. Member removal is `G2-55` level 2. |
+| `parents` consent columns | They are the evidence that holding the record was authorised, which outlives the record (`G2-44`), and `parents_consent_shape` is an all-or-nothing CHECK. |
+| `on_duty` | Its only non-structural column is a timestamp. |
+| NOT NULL enums and timestamps | An appointment slot with no provider, or a severity with no description, is not a health fact — and inventing a value to satisfy NOT NULL would be worse. |
+
+### The limit that remains
+
+"Each phone as soon as it next connects" is the honest ceiling. A phone that is
+never opened again keeps whatever it already had. No server-side change reaches
+it; only level 4 (an encrypted mirror) would, and that is a post-beta decision.
+
+### Not covered yet: attachment files
+
+Blanking covers database rows. It does not delete **files** in the `attachments`
+storage bucket. There are currently **0 files and 0 attachment rows**, so there
+is no gap today — but when attachments ship, deleting a record must also delete
+its objects from storage. Filed as `G2-70`.
 
 ## Related, and already settled
 
