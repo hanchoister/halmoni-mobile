@@ -147,6 +147,32 @@ async function main() {
   if (!familyA || !familyB) throw new Error('each probe account needs its own family before the suite runs');
   if (familyA === familyB) throw new Error('probes share a family — the suite would prove nothing');
 
+  // -- 0. Positive controls, and they run FIRST ------------------------------
+  //
+  // WHY THIS EXISTS: this suite could only ever report "no leaks".
+  //
+  // Every probe below asks "did A see B's data?" and scores zero rows as a
+  // pass. So a change that locked EVERYONE out — real caregivers included —
+  // would make every probe return zero rows and the suite would report a clean
+  // run. That nearly happened: G2-60 re-scoped all 69 policies from `public` to
+  // `authenticated` on 2026-10-04, and if it had taken the grants off
+  // `authenticated` by mistake, nothing here would have said so.
+  //
+  // The only positive control used to live inside probe D's block, which does
+  // not run unless PROBE_D_* is set. So on a normal run there was none at all.
+  //
+  // These assert the app still WORKS. A failure here is an outage, not a leak,
+  // and it is recorded as ERROR so it fails the suite either way.
+  for (const [name, probe, family] of [['A', A, familyA], ['B', B, familyB]]) {
+    const own = await rest(`family_members?family_id=eq.${family}&select=id`, { token: probe.token });
+    const ok = own.status === 200 && Array.isArray(own.json) && own.json.length > 0;
+    record('positive-control', `probe ${name} can read its own family`,
+      ok ? 'REPELLED' : 'ERROR',
+      ok
+        ? `HTTP ${own.status}, ${own.json.length} row(s) — correct`
+        : `HTTP ${own.status} ${own.json?.code ?? ''} — SIGNED-IN ACCESS IS BROKEN, not a leak`);
+  }
+
   // -- 1. Cross-family reads -------------------------------------------------
   // A asks, explicitly, for rows belonging to B's family.
   // presence is keyed by (member_id, family_id) and has no id column, so asking
